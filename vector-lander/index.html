@@ -1694,6 +1694,7 @@ function hudText(txt, x, y, size, color, align) {
   ctx.textAlign = align || 'left'; ctx.textBaseline = 'top';
   ctx.fillText(txt, x, y);
 }
+function stationTitle(lv) { return lv.name.split(' · ')[0]; }
 function drawMiniShip(x, y, s, on) {
   ctx.globalAlpha = on ? 0.95 : 0.22;
   ctx.strokeStyle = on ? '#9df' : '#667';
@@ -1712,7 +1713,7 @@ function drawMiniShip(x, y, s, on) {
 function drawHUD() {
   if (state === 'title' || state === 'map') return;
   hudText('SCORE ' + String(score).padStart(6, '0'), 18, 14, 15, '#e8f4ff');
-  hudText('STATION ' + (levelIdx+1) + '/' + NLV + ' · ' + levelDef.body, 18, 36, 12, '#7fb0d8');
+  hudText('STATION ' + (levelIdx+1) + '/' + NLV + ' · ' + stationTitle(levelDef), 18, 36, 12, '#7fb0d8');
   for (let i = 0, lx = W - 46 - S.lives*26; i < S.lives; i++)
     drawMiniShip(lx + i*26, 26, 1.5, i < lives);
   hudText(muted ? '♪×' : '♪', W - 26, 14, 15, muted ? '#556' : '#7fb0d8', 'right');
@@ -1827,7 +1828,7 @@ function drawOverlays() {
   const dim = a => { ctx.fillStyle = `rgba(3,6,14,${a})`; ctx.fillRect(0, 0, W, H); };
   if (state === 'levelIntro') {
     dim(0.45);
-    centerText('STATION ' + (levelIdx+1) + ' / ' + NLV + ' · ' + levelDef.body, H*0.34, 20, '#7fb0d8');
+    centerText('STATION ' + (levelIdx+1) + ' / ' + NLV + ' · ' + stationTitle(levelDef), H*0.34, 20, '#7fb0d8');
     centerText(levelDef.name, H*0.43, 26, '#e8f4ff', true);
     const gtxt = levelDef.type === 'planetoid'
       ? 'g(表面) ≈ ' + Math.round(levelDef.GM*S.gScale/(levelDef.R*levelDef.R)*10)/10 + ' · 燃料 ' + levelDef.fuel
