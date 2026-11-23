@@ -13,32 +13,37 @@
   html,body{margin:0;padding:0;height:100%;background:#04060e;overflow:hidden;
     overscroll-behavior:none;-webkit-tap-highlight-color:transparent;
     -webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+  body,body *{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
   #cv{display:block;width:100vw;height:100vh;cursor:crosshair;touch-action:none;
     -webkit-touch-callout:none;user-select:none}
   .tbtn{position:fixed;bottom:calc(24px + env(safe-area-inset-bottom));width:76px;height:76px;border-radius:50%;
     border:2px solid rgba(120,220,255,.78);background:rgba(8,20,38,.78);color:#bfe9ff;
     box-shadow:0 0 18px rgba(70,180,255,.28),inset 0 0 14px rgba(70,180,255,.14);
     backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
-    font-size:30px;line-height:72px;text-align:center;display:none;z-index:10;
+    text-align:center;display:none;align-items:center;justify-content:center;z-index:10;
     -webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;
     user-select:none;touch-action:none;transition:transform .08s,background .08s}
+  .tbtn::before{content:'';display:block;width:0;height:0;border-style:solid}
+  #btnL::before{border-width:12px 18px 12px 0;border-color:transparent #bfe9ff transparent transparent;margin-left:-3px}
+  #btnR::before{border-width:12px 0 12px 18px;border-color:transparent transparent transparent #bfe9ff;margin-right:-3px}
+  #btnT::before{border-width:0 14px 20px 14px;border-color:transparent transparent #ffc35e transparent;margin-top:-2px}
   .tbtn.active{background:rgba(70,150,255,.6);transform:scale(.95)}
-  @media (pointer:coarse){ body.touch-play .tbtn{display:block} }
+  @media (pointer:coarse){ body.touch-play .tbtn{display:flex} }
   body.panel-open .tbtn{display:none!important}
   #btnL{left:calc(20px + env(safe-area-inset-left))}
   #btnR{left:calc(112px + env(safe-area-inset-left))}
   #btnT{right:calc(24px + env(safe-area-inset-right));bottom:calc(20px + env(safe-area-inset-bottom));
-    width:92px;height:92px;font-size:38px;line-height:88px;
+    width:92px;height:92px;
     border-color:rgba(255,180,90,.8);color:#ffc35e;
     box-shadow:0 0 22px rgba(255,170,60,.28),inset 0 0 16px rgba(255,170,60,.14)}
   #statsBtn{position:fixed;right:calc(16px + env(safe-area-inset-right));
     top:calc(19vh + env(safe-area-inset-top));display:none;z-index:10;
-    padding:8px 16px;border-radius:16px;border:1px solid rgba(120,220,255,.65);
-    background:rgba(8,20,38,.82);color:#bfe9ff;
-    font:13px 'Courier New','Microsoft YaHei',monospace;
+    padding:8px 12px;border-radius:16px;border:1px solid rgba(120,220,255,.65);
+    background:rgba(8,20,38,.82);color:#bfe9ff;line-height:0;
     box-shadow:0 0 14px rgba(70,180,255,.2);cursor:pointer;
     -webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;
     -webkit-user-select:none;user-select:none;touch-action:none}
+  #statsBtn svg{width:18px;height:18px;fill:currentColor;display:block}
   @media (pointer:coarse){
     body.map-open.compact-map #statsBtn,
     body.map-open.landscape-map #statsBtn{display:block}
@@ -57,17 +62,21 @@
     animation:rotPhone 2.4s ease-in-out infinite}
   @keyframes rotPhone{0%,20%{transform:rotate(0)}70%,100%{transform:rotate(90deg)}}
   .rotTitle{font-size:22px;font-weight:bold;color:#e8f4ff}
-  .rotSub{font-size:13px;color:#9db8d8;line-height:1.6}
-  #rotateSkip{margin-top:10px;padding:8px 18px;border-radius:16px;
+  .rotSub{font-size:13px;color:#9db8d8;line-height:1.6;max-width:300px}
+  .rotBtn{margin-top:6px;padding:8px 18px;border-radius:16px;
     border:1px solid rgba(120,220,255,.6);background:rgba(20,40,70,.6);
     color:#bfe9ff;font:13px 'Courier New','Microsoft YaHei',monospace;
-    cursor:pointer;-webkit-tap-highlight-color:transparent}
+    cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:none}
+  #rotateTry{border-color:#59ffc8;background:rgba(24,80,64,.6);color:#e8f4ff}
+  #rotateSkip{font-size:12px;opacity:.8;padding:6px 14px}
   #gear{position:fixed;left:calc(14px + env(safe-area-inset-left));top:calc(58px + env(safe-area-inset-top));
     width:30px;height:30px;border-radius:50%;
     border:1px solid rgba(120,220,255,.5);background:rgba(20,40,70,.5);color:#9df;
-    font-size:16px;line-height:28px;text-align:center;cursor:pointer;z-index:11;
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;z-index:11;
     -webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;
     -webkit-user-select:none;user-select:none;touch-action:none}
+  #gear svg{width:17px;height:17px;fill:none;stroke:#9df;stroke-width:1.6;stroke-linecap:round}
   #panel{position:fixed;left:calc(14px + env(safe-area-inset-left));top:calc(96px + env(safe-area-inset-top));
     width:min(300px, calc(100vw - 28px));box-sizing:border-box;
     max-height:calc(100vh - 120px - env(safe-area-inset-top));
@@ -97,16 +106,21 @@
 </head>
 <body>
 <canvas id="cv"></canvas>
-<div class="tbtn" id="btnL">◀</div>
-<div class="tbtn" id="btnR">▶</div>
-<div class="tbtn" id="btnT">▲</div>
-<div id="gear" title="参数设置 (G)">⚙</div>
-<button id="statsBtn">统计</button>
+<div class="tbtn" id="btnL" aria-label="左转"></div>
+<div class="tbtn" id="btnR" aria-label="右转"></div>
+<div class="tbtn" id="btnT" aria-label="主引擎"></div>
+<div id="gear" title="参数设置 (G)" aria-label="参数设置">
+  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg>
+</div>
+<button id="statsBtn" aria-label="统计">
+  <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="13" width="3.2" height="7"/><rect x="10.4" y="8" width="3.2" height="12"/><rect x="16.8" y="4" width="3.2" height="16"/></svg>
+</button>
 <div id="rotateHint">
   <div class="rotPhone"></div>
   <div class="rotTitle">请横屏游玩</div>
-  <div class="rotSub">横屏视野更宽 · 触控按钮在左右下角</div>
-  <button id="rotateSkip">继续竖屏</button>
+  <div class="rotSub" id="rotSub">请把手机横过来 · 横屏视野更宽</div>
+  <button id="rotateTry" class="rotBtn">尝试自动横屏</button>
+  <button id="rotateSkip" class="rotBtn">竖屏也可</button>
 </div>
 <div id="panel" hidden>
   <div id="panelTitle">⚙ 参数设置 · 实时生效</div>
@@ -340,7 +354,24 @@ function resize() {
   syncOrientationHint();
 }
 window.addEventListener('resize', resize);
-window.addEventListener('orientationchange', () => setTimeout(syncOrientationHint, 120));
+window.addEventListener('orientationchange', () => setTimeout(() => { resize(); syncOrientationHint(); }, 250));
+async function requestLandscape() {
+  try {
+    if (document.documentElement.requestFullscreen && !document.fullscreenElement)
+      await document.documentElement.requestFullscreen();
+  } catch (e) {}
+  try {
+    if (screen.orientation && screen.orientation.lock)
+      await screen.orientation.lock('landscape');
+  } catch (e) {}
+  setTimeout(() => {
+    resize(); syncOrientationHint();
+    if (window.innerHeight > window.innerWidth) {
+      const sub = document.getElementById('rotSub');
+      if (sub) sub.textContent = '此浏览器不能强制横屏：请关闭竖屏锁定，把手机横过来';
+    }
+  }, 450);
+}
 function syncOrientationHint() {
   const coarse = !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
   const portrait = window.innerHeight > window.innerWidth;
@@ -2355,6 +2386,20 @@ function buildPanel() {
   }
   skinRow.appendChild(skinLab); skinRow.appendChild(skinBtns);
   rows.appendChild(skinRow);
+  if (window.matchMedia && window.matchMedia('(pointer:coarse)').matches) {
+    const dirRow = document.createElement('div'); dirRow.className = 'skinRow';
+    const dirLab = document.createElement('div'); dirLab.className = 'skinLab';
+    dirLab.textContent = '屏幕方向';
+    const dirBtn = document.createElement('button');
+    dirBtn.type = 'button'; dirBtn.className = 'skinBtn'; dirBtn.textContent = '尝试横屏';
+    dirBtn.addEventListener('click', () => {
+      document.body.classList.remove('portrait-ok');
+      syncOrientationHint();
+      requestLandscape();
+    });
+    dirRow.appendChild(dirLab); dirRow.appendChild(dirBtn);
+    rows.appendChild(dirRow);
+  }
   refreshPanel();
 }
 function togglePanel() {
@@ -2378,6 +2423,12 @@ document.getElementById('rotateSkip').addEventListener('pointerdown', e => {
   e.preventDefault();
   document.body.classList.add('portrait-ok');
   syncOrientationHint();
+});
+document.getElementById('rotateTry').addEventListener('pointerdown', e => {
+  e.preventDefault();
+  document.body.classList.remove('portrait-ok');
+  syncOrientationHint();
+  requestLandscape();
 });
 document.getElementById('btnClose').addEventListener('click', togglePanel);
 document.getElementById('btnReset').addEventListener('click', () => {
@@ -2476,6 +2527,12 @@ for (const id of ['cv', 'btnL', 'btnR', 'btnT', 'gear', 'statsBtn'])
   document.getElementById(id).addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('gesturestart', e => e.preventDefault());
 document.addEventListener('selectstart', e => e.preventDefault());
+document.addEventListener('dragstart', e => e.preventDefault());
+document.addEventListener('contextmenu', e => e.preventDefault(), true);
+document.addEventListener('selectionchange', () => {
+  const s = document.getSelection();
+  if (s && s.rangeCount && !s.isCollapsed) s.removeAllRanges();
+});
 
 /* ---------- 主循环（固定步长积分 120Hz） ---------- */
 const FIXED = 1/120;
