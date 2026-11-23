@@ -9,22 +9,37 @@
 <title>矢量着陆 · Vector Lander — 太阳系航线</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
 <style>
-  html,body{margin:0;padding:0;height:100%;background:#04060e;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none}
-  #cv{display:block;width:100vw;height:100vh;cursor:crosshair}
-  .tbtn{position:fixed;bottom:24px;width:76px;height:76px;border-radius:50%;
-    border:2px solid rgba(120,220,255,.5);background:rgba(20,40,70,.35);color:#9df;
+  :root{--safe-b:env(safe-area-inset-bottom, 0px)}
+  html,body{margin:0;padding:0;height:100%;background:#04060e;overflow:hidden;
+    overscroll-behavior:none;-webkit-tap-highlight-color:transparent;
+    -webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+  #cv{display:block;width:100vw;height:100vh;cursor:crosshair;touch-action:none;
+    -webkit-touch-callout:none;user-select:none}
+  .tbtn{position:fixed;bottom:calc(24px + env(safe-area-inset-bottom));width:76px;height:76px;border-radius:50%;
+    border:2px solid rgba(120,220,255,.78);background:rgba(8,20,38,.78);color:#bfe9ff;
+    box-shadow:0 0 18px rgba(70,180,255,.28),inset 0 0 14px rgba(70,180,255,.14);
+    backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
     font-size:30px;line-height:72px;text-align:center;display:none;z-index:10;
-    -webkit-tap-highlight-color:transparent;touch-action:none}
-  .tbtn.active{background:rgba(80,160,255,.45)}
+    -webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;
+    user-select:none;touch-action:none;transition:transform .08s,background .08s}
+  .tbtn.active{background:rgba(70,150,255,.6);transform:scale(.95)}
   @media (pointer:coarse){.tbtn{display:block}}
-  #btnL{left:20px} #btnR{left:112px}
-  #btnT{right:24px;width:92px;height:92px;bottom:20px;font-size:38px;line-height:88px;
-    border-color:rgba(255,180,90,.6);color:#fb0}
-  #gear{position:fixed;left:14px;top:58px;width:30px;height:30px;border-radius:50%;
+  body.panel-open .tbtn{display:none!important}
+  #btnL{left:calc(20px + env(safe-area-inset-left))}
+  #btnR{left:calc(112px + env(safe-area-inset-left))}
+  #btnT{right:calc(24px + env(safe-area-inset-right));bottom:calc(20px + env(safe-area-inset-bottom));
+    width:92px;height:92px;font-size:38px;line-height:88px;
+    border-color:rgba(255,180,90,.8);color:#ffc35e;
+    box-shadow:0 0 22px rgba(255,170,60,.28),inset 0 0 16px rgba(255,170,60,.14)}
+  #gear{position:fixed;left:calc(14px + env(safe-area-inset-left));top:calc(58px + env(safe-area-inset-top));
+    width:30px;height:30px;border-radius:50%;
     border:1px solid rgba(120,220,255,.5);background:rgba(20,40,70,.5);color:#9df;
-    font-size:16px;line-height:28px;text-align:center;cursor:pointer;z-index:11}
-  #panel{position:fixed;left:14px;top:96px;width:300px;max-height:calc(100vh - 120px);
-    overflow-y:auto;background:rgba(8,14,28,.92);border:1px solid rgba(120,220,255,.4);
+    font-size:16px;line-height:28px;text-align:center;cursor:pointer;z-index:11;
+    -webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;touch-action:none}
+  #panel{position:fixed;left:calc(14px + env(safe-area-inset-left));top:calc(96px + env(safe-area-inset-top));
+    width:300px;max-height:calc(100vh - 120px - env(safe-area-inset-top));
+    overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;
+    background:rgba(8,14,28,.92);border:1px solid rgba(120,220,255,.4);
     border-radius:8px;padding:12px 14px;z-index:12;color:#bfe0ff;
     font:13px 'Courier New','Microsoft YaHei',monospace}
   #panelTitle{color:#e8f4ff;margin-bottom:8px;font-weight:bold}
@@ -245,7 +260,7 @@ const LEVELS = [
 /* ---------- 画布 ---------- */
 const cvs = document.getElementById('cv');
 const ctx = cvs.getContext('2d');
-let W = 0, H = 0, DPR = 1, vig = null;
+let W = 0, H = 0, DPR = 1, vig = null, safeBottom = 0;
 let stars = [];
 
 function genStars() {
@@ -263,6 +278,7 @@ function genStars() {
 function resize() {
   DPR = Math.min(2, window.devicePixelRatio || 1);
   W = window.innerWidth; H = window.innerHeight;
+  safeBottom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-b')) || 0;
   cvs.width = Math.round(W * DPR); cvs.height = Math.round(H * DPR);
   const g = ctx.createRadialGradient(W/2, H/2, Math.min(W,H)*0.35, W/2, H/2, Math.max(W,H)*0.75);
   g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,10,0.55)');
@@ -1712,6 +1728,9 @@ function drawMiniShip(x, y, s, on) {
 }
 function drawHUD() {
   if (state === 'title' || state === 'map') return;
+  // 触屏设备：触控按钮占据底部，燃料与速度信息整体上移，避免与按钮重叠
+  const touchUI = !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
+  const hudLift = touchUI ? 104 + safeBottom : 0;
   hudText('SCORE ' + String(score).padStart(6, '0'), 18, 14, 15, '#e8f4ff');
   hudText('STATION ' + (levelIdx+1) + '/' + NLV + ' · ' + stationTitle(levelDef), 18, 36, 12, '#7fb0d8');
   for (let i = 0, lx = W - 46 - S.lives*26; i < S.lives; i++)
@@ -1720,12 +1739,12 @@ function drawHUD() {
 
   const fw = 170, fr = ship.fuel / levelDef.fuel;
   ctx.globalAlpha = 0.9;
-  ctx.strokeStyle = '#56d9ff'; ctx.lineWidth = 1; ctx.strokeRect(18, H-40, fw, 12);
+  ctx.strokeStyle = '#56d9ff'; ctx.lineWidth = 1; ctx.strokeRect(18, H-40-hudLift, fw, 12);
   ctx.fillStyle = fr > 0.5 ? '#56d9ff' : fr > 0.25 ? '#ffb347' :
                   (Math.sin(time*8) > 0 ? '#ff4d4d' : '#802020');
-  ctx.fillRect(19, H-39, (fw-2) * fr, 10);
+  ctx.fillRect(19, H-39-hudLift, (fw-2) * fr, 10);
   ctx.globalAlpha = 1;
-  hudText('FUEL ' + String(Math.round(ship.fuel)).padStart(3, '0'), 18, H-58, 12,
+  hudText('FUEL ' + String(Math.round(ship.fuel)).padStart(3, '0'), 18, H-58-hudLift, 12,
           fr < 0.25 ? '#ff6b5e' : '#7fb0d8');
 
   let alt;
@@ -1734,9 +1753,9 @@ function drawHUD() {
   else alt = Math.max(0, heightAt(ship.x) - ship.y);
   const vyDanger = alt < 300 && ship.vy > S.vyMax;
   const vxDanger = Math.abs(ship.vx) > S.vxMax && alt < 300;
-  hudText('ALT ' + String(Math.round(alt)).padStart(4, '0'), W-18, H-82, 13, '#9df', 'right');
-  hudText('VX ' + fmt(ship.vx, 3), W-18, H-60, 13, vxDanger ? '#ff4d4d' : '#9df', 'right');
-  hudText('VY ' + fmt(ship.vy, 3), W-18, H-38, 13, vyDanger ? '#ff4d4d' : '#9df', 'right');
+  hudText('ALT ' + String(Math.round(alt)).padStart(4, '0'), W-18, H-82-hudLift, 13, '#9df', 'right');
+  hudText('VX ' + fmt(ship.vx, 3), W-18, H-60-hudLift, 13, vxDanger ? '#ff4d4d' : '#9df', 'right');
+  hudText('VY ' + fmt(ship.vy, 3), W-18, H-38-hudLift, 13, vyDanger ? '#ff4d4d' : '#9df', 'right');
 
   if (levelDef.wind) {                               // 侧风指示（含风暴周期）
     const w = windAt(time);
@@ -2056,6 +2075,7 @@ function buildPanel() {
 function togglePanel() {
   panelOpen = !panelOpen;
   document.getElementById('panel').hidden = !panelOpen;
+  document.body.classList.toggle('panel-open', panelOpen);
   if (panelOpen && state === 'playing') paused = true;
   if (!panelOpen) {
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
@@ -2120,6 +2140,7 @@ window.addEventListener('keyup', e => {
   if (c === 'ArrowUp'    || c === 'KeyW' || c === 'Space') keys.up = false;
 });
 cvs.addEventListener('pointerdown', e => {
+  e.preventDefault();
   audioInit();
   if (state === 'title') { gotoMap(); return; }
   if (state === 'map') {
@@ -2147,14 +2168,19 @@ function bindTouch(id, key) {
                        return;                    // 地图态只选择不出发；不写 keys 防残留
                      }
                      if (state === 'landed' || state === 'gameover') { gotoMap(); return; }
-                     keys[key] = true; el.classList.add('active'); };
+                     keys[key] = true; el.classList.add('active');
+                     try { el.setPointerCapture(e.pointerId); } catch (_) {} };
   const off = e => { e.preventDefault(); keys[key] = false; el.classList.remove('active'); };
   el.addEventListener('pointerdown', on);
   el.addEventListener('pointerup', off);
   el.addEventListener('pointercancel', off);
-  el.addEventListener('pointerleave', off);
+  el.addEventListener('lostpointercapture', off);
 }
 bindTouch('btnL', 'left'); bindTouch('btnR', 'right'); bindTouch('btnT', 'up');
+// 触屏长按不弹出系统菜单/选择提示
+for (const id of ['cv', 'btnL', 'btnR', 'btnT', 'gear'])
+  document.getElementById(id).addEventListener('contextmenu', e => e.preventDefault());
+document.addEventListener('gesturestart', e => e.preventDefault());
 
 /* ---------- 主循环（固定步长积分 120Hz） ---------- */
 const FIXED = 1/120;
