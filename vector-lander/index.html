@@ -98,6 +98,11 @@ const progress = Object.assign({ stars: Array(NLV).fill(0), unlocked: 0 },
                                 loadJSON('vl_progress', {}));
 if (!Array.isArray(progress.stars) || progress.stars.length !== NLV)
   progress.stars = Array(NLV).fill(0);
+// 解锁进度校验：仅接受有限数字，取整并限制在 0..NLV-1；异常值回落 0
+if (typeof progress.unlocked !== 'number' || !Number.isFinite(progress.unlocked))
+  progress.unlocked = 0;
+else
+  progress.unlocked = clamp(Math.floor(progress.unlocked), 0, NLV - 1);
 function saveProgress() { saveJSON('vl_progress', progress); }
 
 const stats = Object.assign({ landings:0, crashes:0, perfects:0 }, loadJSON('vl_stats', {}));
@@ -315,6 +320,7 @@ let landPad = null, landOff = 0;
 const cam  = { x:2600, y:900, zoom:0.45 };
 let particles = [], frags = [];
 let spires = [], meteors = [], meteorWarnings = [], meteorQueue = [];
+const METEOR_R = 9;                                   // 陨石半径（绘制头部/辉光 + 碰撞），保持原值
 let meteorNext = 0, stormPhase0 = 0;
 let shake = 0, flashA = 0, time = 0, warnT = 0, lastThrustSnd = false, lastFlame = -1;
 let banner = null;
@@ -468,7 +474,7 @@ function updateMeteors(dt) {
   for (let i = meteorQueue.length - 1; i >= 0; i--) {
     const m = meteorQueue[i];
     if (time >= m.at) {
-      meteors.push({ x: m.x + rand(-8, 8), y: -80, vy: m.vy });
+      meteors.push({ x: m.x + rand(-8, 8), y: -80, vy: m.vy, r: METEOR_R });
       meteorQueue.splice(i, 1);
     }
   }
@@ -478,7 +484,7 @@ function updateMeteors(dt) {
     if (m.y > 1600) { meteors.splice(i, 1); continue; }
     if (state !== 'playing') continue;
     for (const p of shipWorldPts())
-      if (dist2(p.x, p.y, m.x, m.y) < 9) { crash('陨石雨撞击'); return; }
+      if (dist2(p.x, p.y, m.x, m.y) < METEOR_R) { crash('陨石雨撞击'); return; }
   }
 }
 /* ---------- 沙尘暴粒子（爆发期全屏沙流） ---------- */
@@ -558,6 +564,12 @@ function spawnShip() {
 }
 /* 出发一关（航线图调用） */
 function launch(i) {
+  // 统一解锁校验：所有入口（键盘/鼠标/触屏）都走这里，不能只靠地图 UI 限制
+  if (!(S.unlockAll || i <= progress.unlocked)) {
+    announce('站点未解锁', '需先通关前一站', '#ffd75e', 1.6);
+    sfxBeep(160, 0.12, 'square', 0.10, 110);
+    return;
+  }
   if (runFresh) { score = 0; lives = S.lives; runFresh = false; }
   loadLevel(i);
   sfxBeep(440, 0.1, 'square', 0.12, 660);
@@ -1877,7 +1889,9 @@ function drawBodyIcon(x, y, i, unlocked) {
 function drawMap() {
   ctx.fillStyle = 'rgba(3,6,14,0.5)'; ctx.fillRect(0, 0, W, H);
   centerText('太 阳 系 航 线 · SOLAR TOUR', H*0.12, 26, '#e8f4ff', true);
-  centerText('本次航行 ' + score + ' · 最佳航行 ' + best + ' · 飞船 ×' + lives, H*0.19, 14, '#9db8d8');
+  // gameover 后 runFresh 为真，下一轮出发会恢复飞船数：地图按下一轮显示，避免出现「×0」
+  const shownLives = runFresh ? S.lives : lives;
+  centerText('本次航行 ' + score + ' · 最佳航行 ' + best + ' · 飞船 ×' + shownLives, H*0.19, 14, '#9db8d8');
   const allDone = progress.stars.every(s => s >= 1);
   if (allDone) {
     const a = 0.6 + 0.4*Math.sin(time*3);
@@ -2065,6 +2079,7 @@ cvs.addEventListener('pointerdown', e => {
   audioInit();
   if (state === 'title') { gotoMap(); return; }
   if (state === 'map') {
+    if (mapStatsOpen) { mapStatsOpen = false; return; }   // 统计面板：点击只关面板，不穿透到节点
     const hit = mapHitTest(e.clientX, e.clientY);
     if (hit === null) return;
     if (hit === mapSel) launch(hit); else mapSel = hit;
@@ -2079,10 +2094,16 @@ document.addEventListener('visibilitychange', () => {
 
 function bindTouch(id, key) {
   const el = document.getElementById(id);
-  const on  = e => { e.preventDefault(); audioInit(); keys[key] = true; el.classList.add('active');
-                     if (state === 'title') gotoMap();
-                     else if (state === 'map') launch(mapSel);
-                     else if (state === 'landed' || state === 'gameover') gotoMap(); };
+  const on  = e => { e.preventDefault(); audioInit();
+                     if (state === 'title') { gotoMap(); return; }
+                     if (state === 'map') {
+                       if (mapStatsOpen) { mapStatsOpen = false; return; }
+                       if (key === 'left')       mapSel = clamp(mapSel - 1, 0, NLV - 1);
+                       else if (key === 'right') mapSel = clamp(mapSel + 1, 0, NLV - 1);
+                       return;                    // 地图态只选择不出发；不写 keys 防残留
+                     }
+                     if (state === 'landed' || state === 'gameover') { gotoMap(); return; }
+                     keys[key] = true; el.classList.add('active'); };
   const off = e => { e.preventDefault(); keys[key] = false; el.classList.remove('active'); };
   el.addEventListener('pointerdown', on);
   el.addEventListener('pointerup', off);
@@ -2113,6 +2134,7 @@ function render() {
   if (state === 'map') {
     drawStars();
     drawMap();
+    drawBanner();                                 // 地图上的「未解锁」等提示
     if (vig) { ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H); }
     return;
   }
