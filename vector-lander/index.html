@@ -9,7 +9,7 @@
 <title>矢量着陆 · Vector Lander — 太阳系航线</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
 <style>
-  :root{--safe-b:env(safe-area-inset-bottom, 0px)}
+  :root{--safe-b:env(safe-area-inset-bottom, 0px);--safe-l:env(safe-area-inset-left, 0px);--safe-r:env(safe-area-inset-right, 0px)}
   html,body{margin:0;padding:0;height:100%;background:#04060e;overflow:hidden;
     overscroll-behavior:none;-webkit-tap-highlight-color:transparent;
     -webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
@@ -39,8 +39,29 @@
     box-shadow:0 0 14px rgba(70,180,255,.2);cursor:pointer;
     -webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;
     -webkit-user-select:none;user-select:none;touch-action:none}
-  @media (pointer:coarse){ body.map-open.compact-map #statsBtn{display:block} }
+  @media (pointer:coarse){
+    body.map-open.compact-map #statsBtn,
+    body.map-open.landscape-map #statsBtn{display:block}
+  }
   body.panel-open #statsBtn{display:none!important}
+  #rotateHint{position:fixed;inset:0;z-index:60;display:none;flex-direction:column;
+    align-items:center;justify-content:center;gap:12px;background:rgba(2,5,12,.97);
+    color:#e8f4ff;text-align:center;padding:24px;
+    font:14px 'Courier New','Microsoft YaHei',monospace;
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+  @media (pointer:coarse) and (orientation:portrait){
+    body.rotate-hint #rotateHint{display:flex}
+  }
+  .rotPhone{width:52px;height:92px;border:3px solid #59ffc8;border-radius:10px;
+    margin-bottom:10px;box-shadow:0 0 24px rgba(89,255,200,.3);
+    animation:rotPhone 2.4s ease-in-out infinite}
+  @keyframes rotPhone{0%,20%{transform:rotate(0)}70%,100%{transform:rotate(90deg)}}
+  .rotTitle{font-size:22px;font-weight:bold;color:#e8f4ff}
+  .rotSub{font-size:13px;color:#9db8d8;line-height:1.6}
+  #rotateSkip{margin-top:10px;padding:8px 18px;border-radius:16px;
+    border:1px solid rgba(120,220,255,.6);background:rgba(20,40,70,.6);
+    color:#bfe9ff;font:13px 'Courier New','Microsoft YaHei',monospace;
+    cursor:pointer;-webkit-tap-highlight-color:transparent}
   #gear{position:fixed;left:calc(14px + env(safe-area-inset-left));top:calc(58px + env(safe-area-inset-top));
     width:30px;height:30px;border-radius:50%;
     border:1px solid rgba(120,220,255,.5);background:rgba(20,40,70,.5);color:#9df;
@@ -81,6 +102,12 @@
 <div class="tbtn" id="btnT">▲</div>
 <div id="gear" title="参数设置 (G)">⚙</div>
 <button id="statsBtn">统计</button>
+<div id="rotateHint">
+  <div class="rotPhone"></div>
+  <div class="rotTitle">请横屏游玩</div>
+  <div class="rotSub">横屏视野更宽 · 触控按钮在左右下角</div>
+  <button id="rotateSkip">继续竖屏</button>
+</div>
 <div id="panel" hidden>
   <div id="panelTitle">⚙ 参数设置 · 实时生效</div>
   <div id="panelRows"></div>
@@ -284,7 +311,7 @@ const LEVELS = [
 /* ---------- 画布 ---------- */
 const cvs = document.getElementById('cv');
 const ctx = cvs.getContext('2d');
-let W = 0, H = 0, DPR = 1, vig = null, safeBottom = 0;
+let W = 0, H = 0, DPR = 1, vig = null, safeBottom = 0, safeLeft = 0, safeRight = 0;
 let stars = [];
 
 function genStars() {
@@ -303,13 +330,29 @@ function resize() {
   DPR = Math.min(2, window.devicePixelRatio || 1);
   W = window.innerWidth; H = window.innerHeight;
   safeBottom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-b')) || 0;
+  safeLeft = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-l')) || 0;
+  safeRight = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-r')) || 0;
   cvs.width = Math.round(W * DPR); cvs.height = Math.round(H * DPR);
   const g = ctx.createRadialGradient(W/2, H/2, Math.min(W,H)*0.35, W/2, H/2, Math.max(W,H)*0.75);
   g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,10,0.55)');
   vig = g;
   genStars();
+  syncOrientationHint();
 }
 window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(syncOrientationHint, 120));
+function syncOrientationHint() {
+  const coarse = !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
+  const portrait = window.innerHeight > window.innerWidth;
+  const show = coarse && portrait && !document.body.classList.contains('portrait-ok');
+  document.body.classList.toggle('rotate-hint', show);
+  if (show && state !== 'title' && state !== 'map' && !paused) {
+    paused = true; rotatePaused = true;
+  } else if (!show && rotatePaused) {
+    rotatePaused = false;
+    if (!panelOpen) paused = false;
+  }
+}
 
 /* ---------- 音频（程序化合成，无素材） ---------- */
 let AC = null, master = null, noiseBuf = null, noiseGain = null, engineLP = null;
@@ -380,7 +423,7 @@ function sfxLand() {
 function vib(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {} }
 
 /* ---------- 游戏状态 ---------- */
-let state = 'title', stateT = 0, paused = false;
+let state = 'title', stateT = 0, paused = false, rotatePaused = false;
 let levelIdx = 0, levelDef = LEVELS[0];
 let terrain = null, pads = [], P = null, geysers = [];
 let asteroids = [];
@@ -1852,20 +1895,20 @@ function drawHUD() {
   // 触屏设备：触控按钮占据底部，燃料与速度信息整体上移，避免与按钮重叠
   const touchUI = !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
   const hudLift = touchUI ? 104 + safeBottom : 0;
-  hudText('SCORE ' + String(score).padStart(6, '0'), 18, 14, 15, '#e8f4ff');
-  hudText('STATION ' + (levelIdx+1) + '/' + NLV + ' · ' + stationTitle(levelDef), 18, 36, 12, '#7fb0d8');
-  for (let i = 0, lx = W - 46 - S.lives*26; i < S.lives; i++)
+  hudText('SCORE ' + String(score).padStart(6, '0'), 18 + safeLeft, 14, 15, '#e8f4ff');
+  hudText('STATION ' + (levelIdx+1) + '/' + NLV + ' · ' + stationTitle(levelDef), 18 + safeLeft, 36, 12, '#7fb0d8');
+  for (let i = 0, lx = W - 46 - S.lives*26 - safeRight; i < S.lives; i++)
     drawMiniShip(lx + i*26, 26, 1.5, i < lives);
-  hudText(muted ? '♪×' : '♪', W - 26, 14, 15, muted ? '#556' : '#7fb0d8', 'right');
+  hudText(muted ? '♪×' : '♪', W - 26 - safeRight, 14, 15, muted ? '#556' : '#7fb0d8', 'right');
 
   const fw = 170, fr = ship.fuel / levelDef.fuel;
   ctx.globalAlpha = 0.9;
-  ctx.strokeStyle = '#56d9ff'; ctx.lineWidth = 1; ctx.strokeRect(18, H-40-hudLift, fw, 12);
+  ctx.strokeStyle = '#56d9ff'; ctx.lineWidth = 1; ctx.strokeRect(18 + safeLeft, H-40-hudLift, fw, 12);
   ctx.fillStyle = fr > 0.5 ? '#56d9ff' : fr > 0.25 ? '#ffb347' :
                   (Math.sin(time*8) > 0 ? '#ff4d4d' : '#802020');
-  ctx.fillRect(19, H-39-hudLift, (fw-2) * fr, 10);
+  ctx.fillRect(19 + safeLeft, H-39-hudLift, (fw-2) * fr, 10);
   ctx.globalAlpha = 1;
-  hudText('FUEL ' + String(Math.round(ship.fuel)).padStart(3, '0'), 18, H-58-hudLift, 12,
+  hudText('FUEL ' + String(Math.round(ship.fuel)).padStart(3, '0'), 18 + safeLeft, H-58-hudLift, 12,
           fr < 0.25 ? '#ff6b5e' : '#7fb0d8');
 
   let alt;
@@ -1874,9 +1917,9 @@ function drawHUD() {
   else alt = Math.max(0, heightAt(ship.x) - ship.y);
   const vyDanger = alt < 300 && ship.vy > S.vyMax;
   const vxDanger = Math.abs(ship.vx) > S.vxMax && alt < 300;
-  hudText('ALT ' + String(Math.round(alt)).padStart(4, '0'), W-18, H-82-hudLift, 13, '#9df', 'right');
-  hudText('VX ' + fmt(ship.vx, 3), W-18, H-60-hudLift, 13, vxDanger ? '#ff4d4d' : '#9df', 'right');
-  hudText('VY ' + fmt(ship.vy, 3), W-18, H-38-hudLift, 13, vyDanger ? '#ff4d4d' : '#9df', 'right');
+  hudText('ALT ' + String(Math.round(alt)).padStart(4, '0'), W-18-safeRight, H-82-hudLift, 13, '#9df', 'right');
+  hudText('VX ' + fmt(ship.vx, 3), W-18-safeRight, H-60-hudLift, 13, vxDanger ? '#ff4d4d' : '#9df', 'right');
+  hudText('VY ' + fmt(ship.vy, 3), W-18-safeRight, H-38-hudLift, 13, vyDanger ? '#ff4d4d' : '#9df', 'right');
 
   if (levelDef.wind) {                               // 侧风指示（含风暴周期）
     const w = windAt(time);
@@ -1964,6 +2007,12 @@ function centerText(txt, y, size, color, bold) {
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText(txt, W/2, y);
 }
+function leftText(txt, x, y, size, color, bold) {
+  ctx.fillStyle = color;
+  ctx.font = `${bold?'bold ':''}${size}px 'Courier New','Microsoft YaHei',monospace`;
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText(txt, x, y);
+}
 function drawOverlays() {
   const dim = a => { ctx.fillStyle = `rgba(3,6,14,${a})`; ctx.fillRect(0, 0, W, H); };
   if (state === 'levelIntro') {
@@ -1991,11 +2040,6 @@ function drawOverlays() {
 }
 function drawTitle() {
   ctx.fillStyle = 'rgba(3,6,14,0.35)'; ctx.fillRect(0, 0, W, H);
-  ctx.shadowColor = '#56d9ff'; ctx.shadowBlur = 26;
-  centerText('VECTOR LANDER', H*0.24, Math.min(64, W*0.09), '#e8f4ff', true);
-  ctx.shadowBlur = 0;
-  centerText('矢 量 着 陆 · 太 阳 系 航 线', H*0.24 + Math.min(52, W*0.075), 22, '#56d9ff');
-  centerText('向 Spacewar! · Lunar Lander · Asteroids 致敬', H*0.38, 13, '#7fb0d8');
   const touchUI = W < 560 || !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
   const L = touchUI ? [
     '◀ ▶ 旋转机头    ▲ 主引擎',
@@ -2008,6 +2052,31 @@ function drawTitle() {
     '目标：以足够慢的速度、直立姿态降落在发光平台上',
     '惯性真实存在 —— 松开按键后你会继续漂移',
   ];
+  // 手机横屏：左右双栏，避免竖排文字在矮屏上互相重叠
+  if (W > H * 1.2 && H < 560) {
+    const lx = W * 0.06, rx = W * 0.54;
+    ctx.shadowColor = '#56d9ff'; ctx.shadowBlur = 26;
+    leftText('VECTOR LANDER', lx, H*0.26, Math.min(44, W*0.052), '#e8f4ff', true);
+    ctx.shadowBlur = 0;
+    leftText('矢 量 着 陆 · 太 阳 系 航 线', lx, H*0.40, 17, '#56d9ff');
+    leftText('向 Spacewar! · Lunar Lander · Asteroids 致敬', lx, H*0.49, 10, '#7fb0d8');
+    ctx.strokeStyle = 'rgba(120,220,255,.18)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(W*0.50, H*0.14); ctx.lineTo(W*0.50, H*0.62); ctx.stroke();
+    const startY = H*0.17, lh = W < 700 ? 20 : 22, rSize = W < 700 ? 11 : 12;
+    L.forEach((t, i) => leftText(t, rx, startY + i*lh, rSize, i < 2 ? '#9db8d8' : '#ffd75e'));
+    let y = startY + 4*lh + 10;
+    if (best > 0) { leftText('最佳航行 ' + best, rx, y, 13, '#7dffb0'); y += 24; }
+    if (Math.sin(time*3.2) > -0.25)
+      leftText(touchUI ? '— 点击屏幕 进入航线图 —' : '— 按任意键 / 点击屏幕 进入航线图 —',
+               rx, y + 12, W < 700 ? 15 : 16, '#e8f4ff', true);
+    centerText('纯 Canvas 手写牛顿力学 · 零依赖 · 支持触屏', H*0.93, 10, '#556a88');
+    return;
+  }
+  ctx.shadowColor = '#56d9ff'; ctx.shadowBlur = 26;
+  centerText('VECTOR LANDER', H*0.24, Math.min(64, W*0.09), '#e8f4ff', true);
+  ctx.shadowBlur = 0;
+  centerText('矢 量 着 陆 · 太 阳 系 航 线', H*0.24 + Math.min(52, W*0.075), 22, '#56d9ff');
+  centerText('向 Spacewar! · Lunar Lander · Asteroids 致敬', H*0.38, 13, '#7fb0d8');
   L.forEach((t, i) => centerText(t, H*0.48 + i*24, touchUI ? 13 : 14, i < 2 ? '#9db8d8' : '#ffd75e'));
   if (best > 0) centerText('最佳航行 ' + best, H*0.64, 14, '#7dffb0');
   if (Math.sin(time*3.2) > -0.25)
@@ -2018,6 +2087,7 @@ function drawTitle() {
 
 /* ---------- 航线图 ---------- */
 function isCompactMap() { return W < 560; }
+function isLandscapeMap() { return W >= 560 && W > H && H < 560; }
 function mapNodePos(i) {
   if (isCompactMap()) {
     const top = H * 0.255, rowH = H * 0.56 / 9;
@@ -2170,7 +2240,9 @@ function drawMap() {
     ctx.fillText(st > 0 ? '★'.repeat(st) + '☆'.repeat(3 - st) : '☆☆☆', p.x, p.y + 58);
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   }
-  centerText('← → 选择 · 空格 / 点击 出发 · S 统计 · ESC 标题', H*0.90, 14, '#7fb0d8');
+  const touchMap = !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
+  centerText(touchMap ? '点站点选择 · 再点一次出发 · 右上角统计' :
+                        '← → 选择 · 空格 / 点击 出发 · S 统计 · ESC 标题', H*0.90, 14, '#7fb0d8');
   if (mapStatsOpen) drawMapStats();
 }
 function drawMapStats() {
@@ -2197,9 +2269,12 @@ function mapHitTest(x, y) {
       if (Math.abs(y - (top + i*rowH)) <= rowH/2) return i;
     return null;
   }
+  const touch = !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
   for (let i = 0; i < NLV; i++) {
     const p = mapNodePos(i);
-    if (dist2(x, y, p.x, p.y) < 30) return i;
+    if (touch) {
+      if (Math.abs(x - p.x) < 46 && y > p.y - 28 && y < p.y + 74) return i;
+    } else if (dist2(x, y, p.x, p.y) < 30) return i;
   }
   return null;
 }
@@ -2298,6 +2373,11 @@ document.getElementById('gear').addEventListener('pointerdown', e => {
 document.getElementById('statsBtn').addEventListener('pointerdown', e => {
   e.preventDefault(); audioInit();
   if (state === 'map') mapStatsOpen = !mapStatsOpen;
+});
+document.getElementById('rotateSkip').addEventListener('pointerdown', e => {
+  e.preventDefault();
+  document.body.classList.add('portrait-ok');
+  syncOrientationHint();
 });
 document.getElementById('btnClose').addEventListener('click', togglePanel);
 document.getElementById('btnReset').addEventListener('click', () => {
@@ -2419,6 +2499,7 @@ function render() {
   document.body.classList.toggle('touch-play', state === 'playing' && !paused && !panelOpen);
   document.body.classList.toggle('map-open', state === 'map');
   document.body.classList.toggle('compact-map', state === 'map' && isCompactMap());
+  document.body.classList.toggle('landscape-map', state === 'map' && isLandscapeMap());
   ctx.fillStyle = '#050810'; ctx.fillRect(0, 0, W, H);
   if (state === 'map') {
     drawStars();
