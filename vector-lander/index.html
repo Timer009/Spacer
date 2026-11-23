@@ -17,9 +17,8 @@
   #cv{display:block;width:100vw;height:100vh;cursor:crosshair;touch-action:none;
     -webkit-touch-callout:none;user-select:none}
   .tbtn{position:fixed;bottom:calc(24px + env(safe-area-inset-bottom));width:76px;height:76px;border-radius:50%;
-    border:2px solid rgba(120,220,255,.78);background:rgba(8,20,38,.78);color:#bfe9ff;
+    border:2px solid rgba(120,220,255,.78);background:rgba(8,20,38,.92);color:#bfe9ff;
     box-shadow:0 0 18px rgba(70,180,255,.28),inset 0 0 14px rgba(70,180,255,.14);
-    backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
     text-align:center;display:none;align-items:center;justify-content:center;z-index:10;
     -webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;
     user-select:none;touch-action:none;transition:transform .08s,background .08s}
@@ -119,7 +118,7 @@
   <div class="rotPhone"></div>
   <div class="rotTitle">请横屏游玩</div>
   <div class="rotSub" id="rotSub">请把手机横过来 · 横屏视野更宽</div>
-  <button id="rotateTry" class="rotBtn">尝试自动横屏</button>
+  <button id="rotateTry" class="rotBtn">如何横屏</button>
   <button id="rotateSkip" class="rotBtn">竖屏也可</button>
 </div>
 <div id="panel" hidden>
@@ -353,24 +352,18 @@ function resize() {
   genStars();
   syncOrientationHint();
 }
-window.addEventListener('resize', resize);
-window.addEventListener('orientationchange', () => setTimeout(() => { resize(); syncOrientationHint(); }, 250));
-async function requestLandscape() {
-  try {
-    if (document.documentElement.requestFullscreen && !document.fullscreenElement)
-      await document.documentElement.requestFullscreen();
-  } catch (e) {}
-  try {
-    if (screen.orientation && screen.orientation.lock)
-      await screen.orientation.lock('landscape');
-  } catch (e) {}
-  setTimeout(() => {
-    resize(); syncOrientationHint();
-    if (window.innerHeight > window.innerWidth) {
-      const sub = document.getElementById('rotSub');
-      if (sub) sub.textContent = '此浏览器不能强制横屏：请关闭竖屏锁定，把手机横过来';
-    }
-  }, 450);
+let resizeTimer = 0;
+window.addEventListener('resize', () => scheduleResize(80));
+window.addEventListener('orientationchange', () => scheduleResize(350));
+function scheduleResize(delay) {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { resize(); syncOrientationHint(); }, delay);
+}
+function showLandscapeHelp() {
+  document.body.classList.remove('portrait-ok');
+  syncOrientationHint();
+  const sub = document.getElementById('rotSub');
+  if (sub) sub.textContent = '请关闭 iPhone 竖屏锁定，把手机横过来';
 }
 function syncOrientationHint() {
   const coarse = !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
@@ -2391,11 +2384,9 @@ function buildPanel() {
     const dirLab = document.createElement('div'); dirLab.className = 'skinLab';
     dirLab.textContent = '屏幕方向';
     const dirBtn = document.createElement('button');
-    dirBtn.type = 'button'; dirBtn.className = 'skinBtn'; dirBtn.textContent = '尝试横屏';
+    dirBtn.type = 'button'; dirBtn.className = 'skinBtn'; dirBtn.textContent = '横屏提示';
     dirBtn.addEventListener('click', () => {
-      document.body.classList.remove('portrait-ok');
-      syncOrientationHint();
-      requestLandscape();
+      showLandscapeHelp();
     });
     dirRow.appendChild(dirLab); dirRow.appendChild(dirBtn);
     rows.appendChild(dirRow);
@@ -2426,9 +2417,7 @@ document.getElementById('rotateSkip').addEventListener('pointerdown', e => {
 });
 document.getElementById('rotateTry').addEventListener('pointerdown', e => {
   e.preventDefault();
-  document.body.classList.remove('portrait-ok');
-  syncOrientationHint();
-  requestLandscape();
+  showLandscapeHelp();
 });
 document.getElementById('btnClose').addEventListener('click', togglePanel);
 document.getElementById('btnReset').addEventListener('click', () => {
