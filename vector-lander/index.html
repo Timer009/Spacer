@@ -1920,21 +1920,26 @@ function drawHUD() {
   // 触屏设备：触控按钮占据底部，燃料与速度信息整体上移，避免与按钮重叠
   const coarse = !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
   const touchUI = coarse || (navigator.maxTouchPoints > 0 && W < 1000);
-  const hudLift = touchUI ? 104 + safeBottom : 0;
+  const compactHUD = touchUI && H > W;
+  const narrowHUD = W < 700;
+  const hudLift = touchUI ? (compactHUD ? 92 : 104) + safeBottom : 0;
   hudText('SCORE ' + String(score).padStart(6, '0'), 18 + safeLeft, 14, 15, '#e8f4ff');
   hudText('STATION ' + (levelIdx+1) + '/' + NLV + ' · ' + stationTitle(levelDef), 18 + safeLeft, 36, 12, '#7fb0d8');
   for (let i = 0, lx = W - 46 - S.lives*26 - safeRight; i < S.lives; i++)
     drawMiniShip(lx + i*26, 26, 1.5, i < lives);
   hudText(muted ? '♪×' : '♪', W - 26 - safeRight, 14, 15, muted ? '#556' : '#7fb0d8', 'right');
 
-  const fw = 170, fr = ship.fuel / levelDef.fuel;
+  const fw = compactHUD ? 132 : 170;
+  const fh = compactHUD ? 8 : 12;
+  const fr = ship.fuel / levelDef.fuel;
   ctx.globalAlpha = 0.9;
-  ctx.strokeStyle = '#56d9ff'; ctx.lineWidth = 1; ctx.strokeRect(18 + safeLeft, H-40-hudLift, fw, 12);
+  ctx.strokeStyle = '#56d9ff'; ctx.lineWidth = 1; ctx.strokeRect(18 + safeLeft, H-40-hudLift, fw, fh);
   ctx.fillStyle = fr > 0.5 ? '#56d9ff' : fr > 0.25 ? '#ffb347' :
                   (Math.sin(time*8) > 0 ? '#ff4d4d' : '#802020');
-  ctx.fillRect(19 + safeLeft, H-39-hudLift, (fw-2) * fr, 10);
+  ctx.fillRect(19 + safeLeft, H-39-hudLift, (fw-2) * fr, fh-2);
   ctx.globalAlpha = 1;
-  hudText('FUEL ' + String(Math.round(ship.fuel)).padStart(3, '0'), 18 + safeLeft, H-58-hudLift, 12,
+  hudText('FUEL ' + String(Math.round(ship.fuel)).padStart(3, '0'), 18 + safeLeft,
+          H - (compactHUD ? 56 : 58) - hudLift, compactHUD ? 10 : 12,
           fr < 0.25 ? '#ff6b5e' : '#7fb0d8');
 
   let alt;
@@ -1943,9 +1948,9 @@ function drawHUD() {
   else alt = Math.max(0, heightAt(ship.x) - ship.y);
   const vyDanger = alt < 300 && ship.vy > S.vyMax;
   const vxDanger = Math.abs(ship.vx) > S.vxMax && alt < 300;
-  hudText('ALT ' + String(Math.round(alt)).padStart(4, '0'), W-18-safeRight, H-82-hudLift, 13, '#9df', 'right');
-  hudText('VX ' + fmt(ship.vx, 3), W-18-safeRight, H-60-hudLift, 13, vxDanger ? '#ff4d4d' : '#9df', 'right');
-  hudText('VY ' + fmt(ship.vy, 3), W-18-safeRight, H-38-hudLift, 13, vyDanger ? '#ff4d4d' : '#9df', 'right');
+  hudText('ALT ' + String(Math.round(alt)).padStart(4, '0'), W-18-safeRight, H-82-hudLift, compactHUD?11:13, '#9df', 'right');
+  hudText('VX ' + fmt(ship.vx, 3), W-18-safeRight, H-60-hudLift, compactHUD?11:13, vxDanger ? '#ff4d4d' : '#9df', 'right');
+  hudText('VY ' + fmt(ship.vy, 3), W-18-safeRight, H-38-hudLift, compactHUD?11:13, vyDanger ? '#ff4d4d' : '#9df', 'right');
 
   if (levelDef.wind) {                               // 侧风指示（含风暴周期）
     const w = windAt(time);
@@ -1953,16 +1958,27 @@ function drawHUD() {
     const gale = !!levelDef.stormCycle && cyc >= 11;
     const building = !!levelDef.stormCycle && cyc >= 8 && cyc < 11;
     const wcol = gale ? (Math.sin(time*10) > 0 ? '#ff4d4d' : '#801818') : '#ffb347';
-    const cx = W/2;
-    ctx.globalAlpha = 0.85;
-    hudText('风 WIND' + (gale ? ' · 风暴!' : building ? ' · 风暴接近' : ''),
-            cx - 30, 14, 12, wcol, 'right');
-    ctx.fillStyle = wcol;
     const dir = w >= 0 ? 1 : -1;
-    ctx.beginPath();
-    ctx.moveTo(cx - 6 + dir*10, 20); ctx.lineTo(cx - 2 - dir*4, 14);
-    ctx.lineTo(cx - 2 - dir*4, 26); ctx.closePath(); ctx.fill();
-    hudText(Math.abs(w).toFixed(0), cx + 4, 14, 13, wcol);
+    ctx.globalAlpha = 0.85;
+    const label = '风 WIND' + (gale ? ' · 风暴!' : building ? ' · 风暴接近' : '');
+    if (narrowHUD) {
+      const wx = 18 + safeLeft, wy = 58;
+      hudText(label, wx, wy, 11, wcol);
+      const ax = wx + ctx.measureText(label).width + 12;
+      ctx.fillStyle = wcol;
+      ctx.beginPath();
+      ctx.moveTo(ax + dir*8, wy + 6); ctx.lineTo(ax - dir*3, wy + 1);
+      ctx.lineTo(ax - dir*3, wy + 11); ctx.closePath(); ctx.fill();
+      hudText(Math.abs(w).toFixed(0), ax + 10, wy - 1, 12, wcol);
+    } else {
+      const cx = W/2;
+      hudText(label, cx - 30, 14, 12, wcol, 'right');
+      ctx.fillStyle = wcol;
+      ctx.beginPath();
+      ctx.moveTo(cx - 6 + dir*10, 20); ctx.lineTo(cx - 2 - dir*4, 14);
+      ctx.lineTo(cx - 2 - dir*4, 26); ctx.closePath(); ctx.fill();
+      hudText(Math.abs(w).toFixed(0), cx + 4, 14, 13, wcol);
+    }
     ctx.globalAlpha = 1;
   }
   if (levelDef.duststorm) {                          // 沙尘暴状态
@@ -1973,8 +1989,12 @@ function drawHUD() {
     else if (c >= ds.calm)
       hudText('沙尘暴预警 SANDSTORM INCOMING', W/2, 88, 13, '#ffb347', 'center');
   }
-  if (levelDef.drag)
-    hudText('ATM 大气', W/2, 36, 11, '#9db8d8', 'center');
+  if (levelDef.drag) {
+    if (narrowHUD)
+      hudText('ATM 大气', W-18-safeRight, 56, 10, '#9db8d8', 'right');
+    else
+      hudText('ATM 大气', W/2, 36, 11, '#9db8d8', 'center');
+  }
 
   if (ship.fuel <= 0 && state === 'playing')
     hudText('NO FUEL 燃料耗尽', W/2, 66, 15, Math.sin(time*7)>0 ? '#ff4d4d' : '#701c1c', 'center');
@@ -2043,13 +2063,16 @@ function drawOverlays() {
   const dim = a => { ctx.fillStyle = `rgba(3,6,14,${a})`; ctx.fillRect(0, 0, W, H); };
   if (state === 'levelIntro') {
     dim(0.45);
-    centerText('STATION ' + (levelIdx+1) + ' / ' + NLV + ' · ' + stationTitle(levelDef), H*0.34, 20, '#7fb0d8');
-    centerText(levelDef.name, H*0.43, 26, '#e8f4ff', true);
+    const nameSize = Math.min(26, W*0.058);
+    const hintSize = W < 420 ? 12 : 14;
+    centerText('STATION ' + (levelIdx+1) + ' / ' + NLV + ' · ' + stationTitle(levelDef),
+               H*0.34, Math.min(20, W*0.052), '#7fb0d8');
+    centerText(levelDef.name, H*0.43, nameSize, '#e8f4ff', true);
     const gtxt = levelDef.type === 'planetoid'
       ? 'g(表面) ≈ ' + Math.round(levelDef.GM*S.gScale/(levelDef.R*levelDef.R)*10)/10 + ' · 燃料 ' + levelDef.fuel
       : 'g = ' + Math.round(levelDef.g*S.gScale*10)/10 + ' · 燃料 ' + levelDef.fuel;
-    centerText(gtxt, H*0.51, 15, '#ffd75e');
-    centerText(levelDef.hint, H*0.59, 14, '#9db8d8');
+    centerText(gtxt, H*0.51, W < 420 ? 13 : 15, '#ffd75e');
+    centerText(levelDef.hint, H*0.59, hintSize, '#9db8d8');
   }
   if (paused && state === 'playing') {
     dim(0.55);
