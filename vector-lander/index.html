@@ -48,7 +48,8 @@
     -webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;
     -webkit-user-select:none;user-select:none;touch-action:none}
   #panel{position:fixed;left:calc(14px + env(safe-area-inset-left));top:calc(96px + env(safe-area-inset-top));
-    width:300px;max-height:calc(100vh - 120px - env(safe-area-inset-top));
+    width:min(300px, calc(100vw - 28px));box-sizing:border-box;
+    max-height:calc(100vh - 120px - env(safe-area-inset-top));
     overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;
     background:rgba(8,14,28,.92);border:1px solid rgba(120,220,255,.4);
     border-radius:8px;padding:12px 14px;z-index:12;color:#bfe0ff;
@@ -64,6 +65,13 @@
   #panelBtns button{flex:1;background:rgba(60,110,180,.4);border:1px solid rgba(120,220,255,.5);
     color:#e8f4ff;padding:5px 0;cursor:pointer;border-radius:4px;
     font:12px 'Courier New','Microsoft YaHei',monospace}
+  .skinRow{margin:10px 0 4px}
+  .skinLab{color:#9db8d8;margin-bottom:5px}
+  .skinBtns{display:flex;gap:6px}
+  .skinBtn{flex:1;background:rgba(40,70,110,.45);border:1px solid rgba(120,220,255,.35);
+    color:#bfe0ff;padding:5px 0;cursor:pointer;border-radius:4px;
+    font:12px 'Courier New','Microsoft YaHei',monospace}
+  .skinBtn.active{background:rgba(70,150,255,.6);border-color:#59ffc8;color:#fff}
 </style>
 </head>
 <body>
@@ -106,7 +114,9 @@ const NLV = 10;                       // 关卡总数
 
 /* ---------- 可调参数（G/⚙ 面板实时调整，存档保留） ---------- */
 const S_DEF = { gScale:0.9, thrust:44, burn:6, vyMax:36, vxMax:26, padW:1.2,
-                spawnH:380, lives:4, trail:true, unlockAll:false, shake:true };
+                spawnH:380, lives:4, trail:true, unlockAll:false, shake:true,
+                skin:'classic' };
+const SKIN_KEYS = ['classic', 'falcon9', 'starship'];
 let S = { ...S_DEF };
 try {
   const cfg = JSON.parse(localStorage.getItem('vl_cfg') || '{}');
@@ -125,6 +135,7 @@ for (const k in CFG_NUM) {
 }
 for (const k of ['trail', 'unlockAll', 'shake'])
   if (typeof S[k] !== 'boolean') S[k] = S_DEF[k];
+if (!SKIN_KEYS.includes(S.skin)) S.skin = S_DEF.skin;
 function saveCfg() { try { localStorage.setItem('vl_cfg', JSON.stringify(S)); } catch (e) {} }
 
 function loadJSON(key, fallback) {
@@ -653,15 +664,47 @@ function gotoMap() {
   setAmbience(null); releaseAllKeys(); banner = null;
 }
 
-/* ---------- 船体几何（V2：更像一枚矢量火箭） ---------- */
+/* ---------- 船体几何与皮肤 ---------- */
 const HULL = [[0,-14],[4.5,-4],[11,7],[5,9],[-5,9],[-11,7],[-4.5,-4]];
 const SHIP_PTS = [[0,-14],[11,7],[5,9],[-5,9],[-11,7],[4.5,-2],[-4.5,-2]];
+
+const SKINS = {
+  classic: {
+    label: '经典矢量',
+    hull: HULL,
+    pts: SHIP_PTS,
+    flameY: 9, flameW: 2.6,
+    outline: '#e8f4ff', fill: 'rgba(70,150,230,.10)',
+    lights: [[-11, 7, '#ff5c5c'], [11, 7, '#59ff7a']],
+    draw: drawClassicSkin
+  },
+  falcon9: {
+    label: '猎鹰 9',
+    hull: [[0,-14],[2.6,-10],[4,-5],[4,2],[4.6,6],[7,8],[5,9],[-5,9],[-7,8],[-4.6,6],[-4,2],[-4,-5],[-2.6,-10]],
+    pts: [[0,-14],[2.6,-10],[5.2,-7],[4,-5],[4,2],[4.6,6],[7,8],[5,9],[0,9],[-5,9],[-7,8],[-4.6,6],[-4,2],[-4,-5],[-5.2,-7],[-2.6,-10]],
+    flameY: 9, flameW: 2.2,
+    outline: '#f2f7ff', fill: 'rgba(235,242,250,.16)',
+    lights: [[-7, 8, '#ff5c5c'], [7, 8, '#59ff7a']],
+    draw: drawFalconSkin
+  },
+  starship: {
+    label: '星舰',
+    hull: [[0,-14],[3.5,-11],[5.5,-6],[6,-1],[6,4],[8,7],[5,9],[-5,9],[-8,7],[-6,4],[-6,-1],[-5.5,-6],[-3.5,-11]],
+    pts: [[0,-14],[3.5,-11],[6.5,-8],[5.5,-6],[6,-1],[6,4],[8,7],[5,9],[0,9],[-5,9],[-8,7],[-6,4],[-6,-1],[-5.5,-6],[-6.5,-8],[-3.5,-11]],
+    flameY: 9, flameW: 3.0,
+    outline: '#dfe9f5', fill: 'rgba(190,205,225,.18)',
+    lights: [[-8, 7, '#ff5c5c'], [8, 7, '#59ff7a']],
+    draw: drawStarshipSkin
+  }
+};
+function currentSkin() { return SKINS[S.skin] || SKINS.classic; }
+
 function shipPt(px, py) {
   const c = Math.cos(ship.a), s = Math.sin(ship.a);
   return [ship.x + px*c - py*s, ship.y + px*s + py*c];
 }
 function shipWorldPts() {
-  return SHIP_PTS.map(([px, py]) => {
+  return currentSkin().pts.map(([px, py]) => {
     const [x, y] = shipPt(px, py);
     return { x, y };                          // 必须是 {x,y} 对象：碰撞/陨石/着陆判定都按对象取值
   });
@@ -867,8 +910,9 @@ function explode(x, y, vx, vy) {
                      life: rand(0.5, 1.3), max: 1.3, kind: 'boom' });
   }
   particles.push({ x, y, r: 6, life: 0.45, max: 0.45, kind: 'ring' });
-  for (let i = 0; i < HULL.length - 1; i++) {
-    const [ax, ay] = HULL[i], [bx, by] = HULL[i+1];
+  const hull = currentSkin().hull;
+  for (let i = 0; i < hull.length - 1; i++) {
+    const [ax, ay] = hull[i], [bx, by] = hull[i+1];
     frags.push({ ax, ay, bx, by, x, y,
                  vx: vx*0.3 + rand(-70, 70), vy: vy*0.3 + rand(-70, 70),
                  rot: 0, vr: rand(-4, 4), life: rand(0.9, 1.6), max: 1.6 });
@@ -1639,19 +1683,90 @@ function drawTrail() {
   }
   ctx.globalAlpha = 1;
 }
+/* ---------- 船体绘制与皮肤细节 ---------- */
+function shipPoly(pts, fill, stroke, lw, alpha) {
+  ctx.beginPath();
+  pts.forEach(([px, py], i) => {
+    const [x, y] = shipPt(px, py);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.closePath();
+  const a = alpha == null ? 1 : alpha;
+  ctx.globalAlpha = a;
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw / cam.zoom; ctx.stroke(); }
+  ctx.globalAlpha = 1;
+}
+function shipLine(x1, y1, x2, y2, color, lw, alpha) {
+  const [ax, ay] = shipPt(x1, y1), [bx, by] = shipPt(x2, y2);
+  ctx.globalAlpha = alpha == null ? 1 : alpha;
+  ctx.strokeStyle = color; ctx.lineWidth = lw / cam.zoom;
+  ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+function shipDot(x, y, r, color, alpha) {
+  const [wx, wy] = shipPt(x, y);
+  ctx.globalAlpha = alpha == null ? 1 : alpha;
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.arc(wx, wy, r / cam.zoom, 0, TAU); ctx.fill();
+  ctx.globalAlpha = 1;
+}
+function drawClassicSkin() {
+  shipLine(0, -13, 0, 8.5, '#e8f4ff', 0.9, 0.5);
+  shipPoly([[-2.5,-5],[0,-9.5],[2.5,-5],[0,-3.6]], 'rgba(90,220,255,.18)', '#9deaff', 0.9, 0.9);
+  shipPoly([[-2.2,7.4],[2.2,7.4],[3.1,9],[-3.1,9]], 'rgba(255,190,90,.10)', '#ffc35e', 0.8, 0.9);
+  shipLine(-4.5, -3, -3.5, 6, '#7fb0d8', 0.6, 0.4);
+  shipLine(4.5, -3, 3.5, 6, '#7fb0d8', 0.6, 0.4);
+  shipDot(0, -14, 1.1, '#9deaff', 0.8);
+}
+function drawFalconSkin() {
+  // 黑色级间段
+  shipPoly([[-4.05,-4.2],[4.05,-4.2],[4.05,-1],[-4.05,-1]], '#0d1119', null, 0, 0.95);
+  // 栅格翼
+  shipPoly([[-3.6,-8.2],[-5.2,-7],[-4.9,-6.2],[-3.5,-7.2]], 'rgba(190,205,220,.20)', '#d7e4f2', 0.7, 0.9);
+  shipPoly([[3.6,-8.2],[5.2,-7],[4.9,-6.2],[3.5,-7.2]], 'rgba(190,205,220,.20)', '#d7e4f2', 0.7, 0.9);
+  // 着陆腿
+  shipPoly([[-4.3,5.2],[-7,8],[-5,9],[-4.2,7.6]], 'rgba(190,205,220,.18)', '#e2ecf7', 0.9, 0.95);
+  shipPoly([[4.3,5.2],[7,8],[5,9],[4.2,7.6]], 'rgba(190,205,220,.18)', '#e2ecf7', 0.9, 0.95);
+  // 发动机喷口
+  for (const x of [-2.4, 0, 2.4])
+    shipPoly([[x-0.65,7.4],[x+0.65,7.4],[x+0.95,9],[x-0.95,9]],
+             'rgba(255,190,90,.10)', '#c8d8e8', 0.6, 0.85);
+  shipLine(0, -12.5, 0, 7.2, '#dfe9f5', 0.65, 0.45);
+  shipLine(-1.7, -11, -1.7, 4, '#ffffff', 0.55, 0.35);
+  shipLine(1.7, -11, 1.7, 4, '#ffffff', 0.55, 0.25);
+}
+function drawStarshipSkin() {
+  // 隔热瓦
+  for (let y = -8; y <= 4.5; y += 2.2)
+    shipPoly([[-4.8,y],[-3.8,y],[-3.8,y+1.2],[-4.8,y+1.2]], 'rgba(18,22,30,.78)', null, 0, 0.75);
+  // 前翼
+  shipPoly([[-4.4,-9.4],[-6.5,-8],[-6.1,-7],[-4.2,-8.2]], 'rgba(200,212,228,.18)', '#e2ecf7', 0.8, 0.95);
+  shipPoly([[4.4,-9.4],[6.5,-8],[6.1,-7],[4.2,-8.2]], 'rgba(200,212,228,.18)', '#e2ecf7', 0.8, 0.95);
+  // 尾翼
+  shipPoly([[-5,4.6],[-8,7],[-5,9],[-4.4,7.4]], 'rgba(200,212,228,.18)', '#e2ecf7', 0.9, 0.95);
+  shipPoly([[5,4.6],[8,7],[5,9],[4.4,7.4]], 'rgba(200,212,228,.18)', '#e2ecf7', 0.9, 0.95);
+  // 机身环带
+  for (const y of [-6, -1, 4]) shipLine(-5.4, y, 5.4, y, '#dfe9f5', 0.55, 0.35);
+  // 六喷口
+  for (const x of [-3, -1.8, -0.6, 0.6, 1.8, 3]) shipDot(x, 8.2, 0.55, '#9fd8ff', 0.8);
+  shipLine(0, -13, 0, 7, '#ffffff', 0.55, 0.3);
+}
 function drawShip() {
   if (!ship.visible) return;
+  const sk = currentSkin();
   drawTrail();
   if (ship.flame > 0.05) {                          // 四层尾焰 + 马赫环
     const len = (10 + 10*ship.flame) * (0.85 + 0.3*Math.abs(Math.sin(time*38)));
-    const [lx, ly] = shipPt(-2.6, 9), [rx, ry] = shipPt(2.6, 9);
+    const fw = sk.flameW || 2.6, fy = sk.flameY || 9;
+    const [lx, ly] = shipPt(-fw, fy), [rx, ry] = shipPt(fw, fy);
     const layers = [
-      ['#ff7b39', 2.6, 1.0, 0.5],
-      ['#ffb347', 1.8, 0.72, 0.75],
-      ['#fff7d6', 1.1, 0.42, 1.0],
+      ['#ff7b39', fw, 1.0, 0.5],
+      ['#ffb347', fw*0.7, 0.72, 0.75],
+      ['#fff7d6', fw*0.42, 0.42, 1.0],
     ];
     for (const [col, w, k, al] of layers) {
-      const [mx, my] = shipPt(0, 9 + len*k);
+      const [mx, my] = shipPt(0, fy + len*k);
       ctx.globalAlpha = al;
       ctx.strokeStyle = col; ctx.lineWidth = w/cam.zoom;
       ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(mx, my); ctx.lineTo(rx, ry);
@@ -1659,10 +1774,10 @@ function drawShip() {
     }
     ctx.globalAlpha = 0.8; ctx.strokeStyle = '#ffd75e'; ctx.lineWidth = 1/cam.zoom;
     for (const kk of [0.35, 0.6]) {
-      const [d1x, d1y] = shipPt(0, 9 + len*kk - 1.6);
-      const [d2x, d2y] = shipPt(0, 9 + len*kk + 1.6);
-      const [m1x, m1y] = shipPt(1.4, 9 + len*kk);
-      const [m2x, m2y] = shipPt(-1.4, 9 + len*kk);
+      const [d1x, d1y] = shipPt(0, fy + len*kk - 1.6);
+      const [d2x, d2y] = shipPt(0, fy + len*kk + 1.6);
+      const [m1x, m1y] = shipPt(1.4, fy + len*kk);
+      const [m2x, m2y] = shipPt(-1.4, fy + len*kk);
       ctx.beginPath();
       ctx.moveTo(d1x, d1y); ctx.lineTo(m1x, m1y); ctx.lineTo(d2x, d2y);
       ctx.lineTo(m2x, m2y); ctx.closePath(); ctx.stroke();
@@ -1671,23 +1786,18 @@ function drawShip() {
   }
   // 机身
   ctx.beginPath();
-  HULL.forEach(([px, py], i) => {
+  sk.hull.forEach(([px, py], i) => {
     const [wx, wy] = shipPt(px, py);
     i === 0 ? ctx.moveTo(wx, wy) : ctx.lineTo(wx, wy);
   });
   ctx.closePath();
-  glowStroke('#e8f4ff', 1.8/cam.zoom, 0.35);
-  // 中脊线 + 座舱
-  const [s1x, s1y] = shipPt(0, -14), [s2x, s2y] = shipPt(0, 8.5);
-  ctx.globalAlpha = 0.5; ctx.strokeStyle = '#e8f4ff'; ctx.lineWidth = 0.9/cam.zoom;
-  ctx.beginPath(); ctx.moveTo(s1x, s1y); ctx.lineTo(s2x, s2y); ctx.stroke();
-  const [c1x, c1y] = shipPt(-2.5, -5), [c2x, c2y] = shipPt(0, -9.5), [c3x, c3y] = shipPt(2.5, -5);
-  ctx.beginPath(); ctx.moveTo(c1x, c1y); ctx.lineTo(c2x, c2y); ctx.lineTo(c3x, c3y); ctx.stroke();
-  ctx.globalAlpha = 1;
+  if (sk.fill) { ctx.fillStyle = sk.fill; ctx.fill(); }
+  glowStroke(sk.outline || '#e8f4ff', 1.8/cam.zoom, 0.35);
+  sk.draw();
   // 翼尖航行灯：左红右绿交替闪烁
   const on = (time*2.5) % 1 < 0.55;
-  for (const [side, col] of [[-1, '#ff5c5c'], [1, '#59ff7a']]) {
-    const [nx, ny] = shipPt(side*11, 7);
+  for (const [lx, ly, col] of sk.lights) {
+    const [nx, ny] = shipPt(lx, ly);
     const lit = on ? 0.95 : 0.25;
     ctx.globalAlpha = lit; ctx.fillStyle = col;
     ctx.beginPath(); ctx.arc(nx, ny, 1.7/cam.zoom, 0, TAU); ctx.fill();
@@ -1725,17 +1835,15 @@ function hudText(txt, x, y, size, color, align) {
 }
 function stationTitle(lv) { return lv.name.split(' · ')[0]; }
 function drawMiniShip(x, y, s, on) {
+  const hull = currentSkin().hull, k = 0.5 * s;
   ctx.globalAlpha = on ? 0.95 : 0.22;
   ctx.strokeStyle = on ? '#9df' : '#667';
   ctx.lineWidth = 1.4;
   ctx.beginPath();
-  ctx.moveTo(x, y - 7*s);
-  ctx.lineTo(x + 2*s, y - 2*s);
-  ctx.lineTo(x + 5.5*s, y + 3.5*s);
-  ctx.lineTo(x + 2*s, y + 4.5*s);
-  ctx.lineTo(x - 2*s, y + 4.5*s);
-  ctx.lineTo(x - 5.5*s, y + 3.5*s);
-  ctx.lineTo(x - 2*s, y - 2*s);
+  hull.forEach(([px, py], i) => {
+    const xx = x + px*k, yy = y + py*k;
+    i === 0 ? ctx.moveTo(xx, yy) : ctx.lineTo(xx, yy);
+  });
   ctx.closePath(); ctx.stroke();
   ctx.globalAlpha = 1;
 }
@@ -2114,6 +2222,11 @@ const PANEL_CHECKS = [
   { key:'unlockAll', name:'解锁全部关卡' },
   { key:'shake',     name:'屏幕震动' },
 ];
+const PANEL_SKINS = [
+  { key:'classic',  name:'经典' },
+  { key:'falcon9',  name:'猎鹰 9' },
+  { key:'starship', name:'星舰' },
+];
 let panelOpen = false;
 function refreshPanel() {
   for (const d of PANEL_ROWS) {
@@ -2121,6 +2234,7 @@ function refreshPanel() {
     d.valEl.textContent = d.fmt(S[d.key]);
   }
   for (const d of PANEL_CHECKS) d.inpEl.checked = !!S[d.key];
+  for (const d of PANEL_SKINS) if (d.btnEl) d.btnEl.classList.toggle('active', S.skin === d.key);
 }
 function buildPanel() {
   const rows = document.getElementById('panelRows');
@@ -2151,6 +2265,21 @@ function buildPanel() {
     row.appendChild(nm); row.appendChild(inp); rows.appendChild(row);
     d.inpEl = inp;
   }
+  const skinRow = document.createElement('div'); skinRow.className = 'skinRow';
+  const skinLab = document.createElement('div'); skinLab.className = 'skinLab';
+  skinLab.textContent = '飞船外观';
+  const skinBtns = document.createElement('div'); skinBtns.className = 'skinBtns';
+  for (const d of PANEL_SKINS) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'skinBtn'; b.textContent = d.name;
+    b.addEventListener('click', () => {
+      if (!SKIN_KEYS.includes(d.key)) return;
+      S.skin = d.key; saveCfg(); refreshPanel();
+    });
+    d.btnEl = b; skinBtns.appendChild(b);
+  }
+  skinRow.appendChild(skinLab); skinRow.appendChild(skinBtns);
+  rows.appendChild(skinRow);
   refreshPanel();
 }
 function togglePanel() {
