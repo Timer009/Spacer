@@ -1778,27 +1778,36 @@ function nearestTarget() {
   }
   return target;
 }
+function smoothRange(value, start, end) {
+  const t=clamp((value-start)/(end-start),0,1);
+  return t*t*(3-2*t);
+}
 function camFollow(dt, snap = false) {
   const target=nearestTarget();
-  const usableHeight=H-safeTop-safeBottom;
-  const usableWidth=W-safeLeft-safeRight;
-  const dx=target ? target.x-ship.x : 0, dy=target ? target.y-ship.y : 0;
+  const width=Math.max(1,W-safeLeft-safeRight),height=Math.max(1,H-safeTop-safeBottom);
+  const dx=target ? target.x-ship.x : 0,dy=target ? target.y-ship.y : 0;
   const distance=Math.hypot(dx,dy);
-  const approach=1-clamp((distance-48)/220,0,1);
-  const bodyHeight=ship.modelId==='superheavy'?42:23;
-  const overview=(bodyHeight===42?36:28)/bodyHeight;
-  const close=(bodyHeight===42?57:48)/bodyHeight;
-  const desired=overview+(close-overview)*approach;
-  const fit=Math.min(usableWidth*0.72/(Math.abs(dx)+48),usableHeight*0.57/(Math.abs(dy)+32));
-  const zoom=Math.max(overview,Math.min(desired,fit),W/WORLD_W);
-  const blend=snap?1:1-Math.exp(-dt*3.5);
+  const heavy=ship.modelId==='superheavy',bodyHeight=heavy?42:23;
+  const cruise=(heavy?36:28)/bodyHeight,minimum=(heavy?30:24)/bodyHeight;
+  const close=(heavy?57:48)/bodyHeight;
+  const halfWidth=target?Math.min(target.w/2,74):0;
+  const top=Math.min(-bodyHeight/2,dy-(target?.above||0));
+  const bottom=Math.max(bodyHeight/2,dy);
+  const left=Math.min(-12,dx-halfWidth),right=Math.max(12,dx+halfWidth);
+  // The camera projects its anchor at 42% of screen height. Keep both subjects
+  // in the useful portion of the view before asking for a close-up.
+  const fit=Math.min(width*0.88/(right-left),height*0.81/(bottom-top));
+  const preview=target ? smoothRange(fit/cruise,0.55,1.12) : 0;
+  const final=target ? 1-smoothRange(distance,25,132) : 0;
+  const desired=cruise+(close-cruise)*final;
+  const framing=clamp(fit,minimum,desired);
+  const zoom=Math.max(W/WORLD_W,cruise+(framing-cruise)*preview);
+  const weight=preview*(1-final*0.55);
+  const cx=ship.x+(left+right)/2*weight+(safeRight-safeLeft)/(2*zoom);
+  const cy=ship.y+((top+bottom)/2+height*0.06/zoom)*weight+(safeBottom-safeTop)/(2*zoom);
+  const blend=snap?1:1-Math.exp(-dt*4.1);
   cam.zoom+=(zoom-cam.zoom)*blend;
-  // Anticipate the approach before the target crosses the edge of the viewport.
-  const visibleSpan=Math.min(usableWidth,usableHeight)/overview;
-  const weight=1-clamp((distance-visibleSpan*0.35)/(visibleSpan*0.9),0,1);
-  const frameWeight=0.44*weight*weight*(3-2*weight);
-  cam.x+=(ship.x+dx*frameWeight-cam.x)*blend;
-  cam.y+=(ship.y+dy*frameWeight-cam.y)*blend;
+  cam.x+=(cx-cam.x)*blend;cam.y+=(cy-cam.y)*blend;
   cam.x=clampCamX(cam.x,cam.zoom);
 }
 
@@ -1904,8 +1913,9 @@ function drawSky() {
   if (th.skyBodies) for (const b of th.skyBodies) if (b.kind === 'galaxy') drawGalaxy(b);
   if (terrain || isTower()) {
     const tint=levelDef.theme.ridge || '#6b8999';
-    drawHorizon(tint+'28',0.045,H*0.61,0.012);
-    drawHorizon(tint+'48',0.105,H*0.73,0.019);
+    drawHorizon(tint+'22',0.065,H*0.61,0.012);
+    drawHorizon(tint+'46',0.155,H*0.73,0.019);
+    drawHorizon(tint+'24',0.27,H*0.94,0.028);
   }
   const ds = levelDef.duststorm;                 // 沙尘暴天空染色
   if (ds) {
@@ -1946,7 +1956,7 @@ function drawSkyBodies() {                        // 每关天象：正确的天
   if (!bodies) return;
   const hudBottom = H - hudLiftForTouch() - 87;
   for (const b of bodies) {
-    const drift=parallax(0.022);
+    const drift=parallax(0.008);
     const x=b.x*W-drift.x, y=b.y*H-drift.y;
     if (b.kind === 'sun') {
       const rg = ctx.createRadialGradient(x, y, 0, x, y, b.r*4);
@@ -2242,7 +2252,7 @@ function drawSkyDock(cx, y, w, v, p) {             // 木星：天空坞站
 }
 function drawOcean(v) {
   const pad=pads[0], deck=deckPose(pad,time);
-  const drift=parallax(0.075);
+  const drift=parallax(0.11);
   const horizon=clamp(H*0.32-drift.y,18,H*0.58);
   ctx.save();
   ctx.setTransform(DPR,0,0,DPR,0,0);
@@ -2265,8 +2275,10 @@ function drawOcean(v) {
     ctx.beginPath();
     for(let row=0;row<12;row+=detail) for(let col=0;col<10;col++){
       if(((Math.floor(row)%3!==0)?1:0)!==shade) continue;
-      const y=horizon+3+row*row*H/520;
-      const x=mod(col*W/9+Math.sin(row*9+col)*33-cam.x*(0.04+row*0.014)+time*(row+2)*0.9,W);
+      const depth=(row+1)/12;
+      const y=horizon+5+depth*depth*(H-horizon)*0.90-(cam.y-800)*depth*0.19;
+      if(y<horizon+2 || y>H+4) continue;
+      const x=mod(col*W/9+Math.sin(row*9+col)*33-cam.x*(0.04+depth*0.26)+time*(row+2)*0.9,W);
       const amplitude=1+row*0.22;
       ctx.moveTo(x,y);ctx.quadraticCurveTo(x+row+6,y-amplitude*Math.sin(time+row+col*0.9),x+9+row*3,y);
     }
@@ -2508,6 +2520,12 @@ function drawCloudBands(v) {                        // 木星云带
   for (const b of bands) {
     ctx.globalAlpha = 0.10; ctx.fillStyle = b.c;
     ctx.fillRect(v.l - 100, b.y, (v.r - v.l) + 200, b.h);
+    ctx.beginPath();
+    for(let x=Math.floor(v.l/130)*130;x<v.r+35;x+=130){
+      const y=b.y+b.h*0.35+Math.sin(x*0.026+b.y)*24;
+      ctx.moveTo(x,y);ctx.quadraticCurveTo(x+34,y-6,x+75,y+1);
+    }
+    ctx.strokeStyle=b.c;ctx.lineWidth=1/v.z;ctx.stroke();
   }
   ctx.globalAlpha = 0.16; ctx.fillStyle = 'rgba(200,80,50,1)';
   ctx.beginPath(); ctx.ellipse(2600, 1180, 220, 90, 0, 0, TAU); ctx.fill();
@@ -2517,9 +2535,19 @@ function drawPlanetoid(v) {
   if (!P) return;
   ctx.setLineDash([10/v.z, 14/v.z]);
   ctx.strokeStyle = '#b48cff'; ctx.globalAlpha = 0.16; ctx.lineWidth = 1.2/v.z;
-  for (const rr of [P.R + 260, P.R + 620]) {
-    ctx.beginPath(); ctx.arc(P.cx, P.cy, rr, 0, TAU); ctx.stroke();
+  for (const rr of [P.R+125,P.R+260,P.R+430,P.R+620]) {
+    ctx.beginPath();ctx.arc(P.cx,P.cy,rr,0,TAU);ctx.stroke();
   }
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  for(let index=0;index<24;index++){
+    const angle=index*TAU/24,c=Math.cos(angle),s=Math.sin(angle);
+    for(const radius of [P.R+125,P.R+260,P.R+430,P.R+620]){
+      ctx.moveTo(P.cx+c*(radius-6/v.z),P.cy+s*(radius-6/v.z));
+      ctx.lineTo(P.cx+c*(radius+6/v.z),P.cy+s*(radius+6/v.z));
+    }
+  }
+  ctx.stroke();
   ctx.setLineDash([]); ctx.globalAlpha = 1;
   ctx.beginPath(); ctx.arc(P.cx, P.cy, P.R, 0, TAU);
   ctx.fillStyle = 'rgba(38,28,66,0.85)'; ctx.fill();
@@ -3807,9 +3835,9 @@ function frame(now) {
 
 /* ---------- 渲染入口 ---------- */
 const BUILD = Object.freeze({
-  version:'v2.0.15-rc.2a',
-  number:'2.0.15.2a',
-  builtAt:'2026-11-24T15:57:33Z',
+  version:'v2.0.15-rc.2b',
+  number:'2.0.15.2b',
+  builtAt:'2026-11-24T16:37:16Z',
   channel:'候选预览',
 });
 const menuVersion = document.getElementById('menuVersion');
