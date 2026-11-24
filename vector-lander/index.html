@@ -78,6 +78,8 @@
   #menuVersion{position:absolute;left:calc(16px + var(--safe-l));bottom:calc(8px + var(--safe-b));
     color:#aac1d7;font:12px monospace;pointer-events:none}
   body.rotate-hint #menuVersion{visibility:hidden}
+  .qualitySetting{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:8px 0}
+  #qualitySelect{min-height:44px;min-width:90px;color:inherit;background:#1a2936;border:1px solid #486472;border-radius:5px}
   #buildDetails{color:#bfe0ff;white-space:pre-line;margin:8px 0;overflow-wrap:anywhere}
   #buildCopyField{width:100%;box-sizing:border-box;color:inherit;background:#04060e}
   #buildCopyField,#buildCopyField:focus{user-select:text;-webkit-user-select:text;-webkit-touch-callout:default}
@@ -247,6 +249,12 @@
     <button id="nativeLandscape" type="button" class="skinBtn">尝试原生全屏横屏</button>
     <output id="directionStatus" class="directionStatus" aria-live="polite"></output>
   </fieldset>
+  <label class="qualitySetting">画质
+    <select id="qualitySelect">
+      <option value="auto">自动</option><option value="high">高</option>
+      <option value="medium">中</option><option value="low">低</option>
+    </select>
+  </label>
   <div id="panelRows"></div>
   <div id="buildDetails"></div>
   <button id="copyBuild" class="skinBtn" type="button">复制版本信息</button>
@@ -290,7 +298,15 @@ const NLV = 10;                       // 关卡总数
 /* ---------- 可调参数（G/⚙ 面板实时调整，存档保留） ---------- */
 const S_DEF = { gScale:0.9, thrust:44, burn:6, vyMax:36, vxMax:26, padW:1.2,
                 spawnH:380, lives:4, trail:true, unlockAll:false, shake:true,
-                skin:'classic' };
+                skin:'classic', quality:'auto' };
+const QUALITY = {
+  high:{dpr:2,prediction:12,particleStride:1,detailStep:1},
+  medium:{dpr:1.5,prediction:8,particleStride:2,detailStep:1.5},
+  low:{dpr:1,prediction:6,particleStride:3,detailStep:2.3},
+};
+const qualityLevels = ['high','medium','low'];
+let adaptiveLevel = 0, frameAverage = 16.7, qualitySamples = 0;
+function renderQuality() { return QUALITY[S.quality==='auto' ? qualityLevels[adaptiveLevel] : S.quality]; }
 const MODEL_KEYS = ['classic', 'falcon9', 'starship'];
 let S = { ...S_DEF };
 try {
@@ -311,6 +327,7 @@ for (const k in CFG_NUM) {
 for (const k of ['trail', 'unlockAll', 'shake'])
   if (typeof S[k] !== 'boolean') S[k] = S_DEF[k];
 // Retain the saved "skin" key and IDs from earlier versions.
+if (S.quality!=='auto' && !qualityLevels.includes(S.quality)) S.quality=S_DEF.quality;
 if (!MODEL_KEYS.includes(S.skin)) S.skin = S_DEF.skin;
 function saveCfg() { try { localStorage.setItem('vl_cfg', JSON.stringify(S)); } catch (e) {} }
 
@@ -514,7 +531,8 @@ function resize() {
   if (offeredW <= 0 || offeredH <= 0) return;
   const x = useVisual ? visual.offsetLeft : 0;
   const y = useVisual ? visual.offsetTop : 0;
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  // Adaptive detail leaves the backing store intact. Explicit quality changes raster density.
+  const dpr = Math.min(S.quality==='auto' ? QUALITY.high.dpr : renderQuality().dpr, window.devicePixelRatio || 1);
   const hostChanged = offeredW !== requestedW || offeredH !== requestedH || x !== requestedX || y !== requestedY;
   const unobservedChange = typeof ResizeObserver !== 'function' &&
     (viewportHost.clientWidth !== hostW || viewportHost.clientHeight !== hostH);
@@ -534,7 +552,8 @@ function resize() {
   const w = rotate ? hostH : boxed ? Math.round(hostH * 0.75) : hostW;
   const h = rotate ? hostW : hostH;
   const left = boxed ? Math.floor((hostW - w) / 2) : 0;
-  const resized = w !== W || h !== H || dpr !== DPR;
+  const geometryChanged=w!==W || h!==H;
+  const resized = geometryChanged || dpr !== DPR;
   if (W && (rotate !== virtualLandscape || (w >= h) !== (W >= H) || hostLandscape !== previousHostLandscape)) {
     cancelViewportInput();
     scheduleInsetRefresh();
@@ -567,7 +586,7 @@ function resize() {
     cvs.width = Math.round(W * DPR); cvs.height = Math.round(H * DPR);
     vig = ctx.createRadialGradient(W/2, H/2, Math.min(W,H)*0.35, W/2, H/2, Math.max(W,H)*0.75);
     vig.addColorStop(0, 'rgba(0,0,0,0)'); vig.addColorStop(1, 'rgba(0,0,10,0.55)');
-    genStars();
+    if (geometryChanged) genStars();
   }
   if (debugEnabled) debugPanel.style.setProperty('--debug-height', Math.max(48, H - safeTop - safeBottom - 126) + 'px');
   syncOrientationHint();
@@ -1170,7 +1189,7 @@ function envForces(o, dt, t) {
 }
 
 /* ---------- 轨迹预测（含风/阻力/间歇泉/移动平台） ---------- */
-const PREDICTION_INTERVAL = 1/12;
+
 let predictionDue = -Infinity;
 function computePrediction() {
   const pts = [], hull = [];
@@ -1182,6 +1201,7 @@ function computePrediction() {
   const rain = meteors.map(m => ({...m}));
   const queued = meteorQueue.map(m => ({...m, y:-80, r:METEOR_R}));
   const left = keys.left, right = keys.right, thrust = keys.up;
+  const solidHazards=rocks.length>0 || spires.length>0;
   // 小步长与实际飞行一致。低重力或高空时延长视距，最多 24 秒。
   const height = terrain ? heightAt(sim.x) - sim.y :
     P ? dist2(sim.x, sim.y, P.cx, P.cy) - P.R : Math.abs(padY(pads[0],time) - sim.y);
@@ -1221,7 +1241,7 @@ function computePrediction() {
     if (i % stride === 0) pts.push({x:sim.x, y:sim.y});
     for (const rock of rocks) moveAsteroid(rock, FIXED);
     shipWorldPts(sim, hull);
-    const obstacle = hull.find(p => rocks.some(a => dist2(p.x,p.y,a.x,a.y) < a.r*0.72) ||
+    const obstacle = solidHazards && hull.find(p => rocks.some(a => dist2(p.x,p.y,a.x,a.y) < a.r*0.72) ||
                                    spires.some(s => hitsSpire(s, p)));
     const hit = obstacle || findContact(hull, t, sim)?.pt;
     if (hit) { impact = {...hit}; break; }
@@ -1731,11 +1751,15 @@ function drawHorizon(color, depth, height, scale) {
   }
   ctx.lineTo(W,H);ctx.closePath();ctx.fillStyle=color;ctx.fill();
 }
+let skyGradient=null, skyTheme=null, skyHeight=0;
 function drawSky() {
   const th = levelDef.theme;
-  const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, th.sky[0]); g.addColorStop(1, th.sky[1]);
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  if(skyTheme!==th || skyHeight!==H){
+    skyTheme=th;skyHeight=H;
+    skyGradient=ctx.createLinearGradient(0,0,0,H);
+    skyGradient.addColorStop(0,th.sky[0]);skyGradient.addColorStop(1,th.sky[1]);
+  }
+  ctx.fillStyle=skyGradient;ctx.fillRect(0,0,W,H);
   if (th.skyBodies) for (const b of th.skyBodies) if (b.kind === 'galaxy') drawGalaxy(b);
   if (terrain || isTower()) {
     const tint=levelDef.theme.ridge || '#6b8999';
@@ -1887,7 +1911,7 @@ function drawTerrain(v) {
   ctx.clip();
   // Seed surface details from world coordinates rather than the flight random stream.
   const ice=!!levelDef.driftPads, mars=!!levelDef.duststorm;
-  const stride=ice?22:26;
+  const stride=Math.round((ice?22:26)*renderQuality().detailStep);
   for(let x=Math.ceil(x0/stride)*stride;x<x1;x+=stride){
     const seed=mod(Math.sin(x*17.17)*43758.5453,1);
     const gy=heightAt(x)+6+seed*25;
@@ -2094,15 +2118,18 @@ function drawOcean(v) {
   ctx.fillStyle=water; ctx.fillRect(0,horizon,W,H-horizon);
   ctx.fillStyle='#afcad0'; ctx.fillRect(0,horizon,W,1);
   ctx.lineWidth=0.8;
-  for (let row=0;row<12;row++) {
-    const y=horizon+3+row*row*H/520;
-    for (let col=0;col<10;col++) {
-      const x=mod(col*W/9 + Math.sin(row*9+col)*33 - cam.x*(0.04+row*0.014) + time*(row+2)*0.9,W);
+  const detail=renderQuality().detailStep;
+  for(let shade=0;shade<2;shade++){
+    ctx.strokeStyle=shade?'rgba(183,222,226,.30)':'rgba(21,61,73,.55)';
+    ctx.beginPath();
+    for(let row=0;row<12;row+=detail) for(let col=0;col<10;col++){
+      if(((Math.floor(row)%3!==0)?1:0)!==shade) continue;
+      const y=horizon+3+row*row*H/520;
+      const x=mod(col*W/9+Math.sin(row*9+col)*33-cam.x*(0.04+row*0.014)+time*(row+2)*0.9,W);
       const amplitude=1+row*0.22;
-      ctx.strokeStyle=row%3?'rgba(183,222,226,.30)':'rgba(21,61,73,.55)';
-      ctx.beginPath();ctx.moveTo(x,y);ctx.quadraticCurveTo(x+row+6,y-amplitude*Math.sin(time+row+col*0.9),x+9+row*3,y);
-      ctx.stroke();
+      ctx.moveTo(x,y);ctx.quadraticCurveTo(x+row+6,y-amplitude*Math.sin(time+row+col*0.9),x+9+row*3,y);
     }
+    ctx.stroke();
   }
   ctx.restore();
   if (pad.y+57<v.t || pad.y-14>v.b) return;
@@ -2377,8 +2404,12 @@ function drawAsteroids(v) {
     ctx.lineWidth = 1.5/v.z; ctx.globalAlpha = 1;
   }
 }
-function drawParticles() {
-  for (const p of particles) {
+function drawParticles(v) {
+  const stride=renderQuality().particleStride;
+  for(let i=0;i<particles.length;i++){
+    const p=particles[i];
+    if(p.x<v.l-120 || p.x>v.r+120 || p.y<v.t-120 || p.y>v.b+120) continue;
+    if(p.kind!=='ring' && p.kind!=='boom' && i%stride!==0) continue;
     const t = clamp(p.life / p.max, 0, 1);
     if (p.kind === 'ring') {
       ctx.globalAlpha = t * 0.8;
@@ -2420,18 +2451,21 @@ function drawPrediction() {
   if (state !== 'playing') return;
   if (time >= predictionDue) {
     computePrediction();
-    predictionDue = time + PREDICTION_INTERVAL;
+    predictionDue = time + 1/renderQuality().prediction;
   }
   if (!pred.pts.length && !pred.impact) return;
   const noisy = levelDef.predNoise && mod(time, 5) < 0.8;   // 冥王星：预测线干扰
   ctx.fillStyle = '#59ffc8';
+  ctx.globalAlpha=0.35;
+  ctx.beginPath();
   pred.pts.forEach((p, i) => {
     let ox = 0, oy = 0;
     if (noisy) { ox = Math.sin(i*13.7 + time*30)*9/cam.zoom;
                  oy = Math.cos(i*7.3 + time*25)*9/cam.zoom; }
-    ctx.globalAlpha = 0.35;
-    ctx.beginPath(); ctx.arc(p.x + ox, p.y + oy, 2/cam.zoom, 0, TAU); ctx.fill();
+    const radius=2/cam.zoom;
+    ctx.moveTo(p.x+ox+radius,p.y+oy);ctx.arc(p.x+ox,p.y+oy,radius,0,TAU);
   });
+  ctx.fill();
   if (pred.impact) {
     ctx.globalAlpha = noisy ? (Math.sin(time*20) > 0 ? 0.9 : 0.15) : 0.9;
     ctx.strokeStyle = '#ff4d4d'; ctx.lineWidth = 2/cam.zoom;
@@ -2598,7 +2632,7 @@ function drawWorld() {
   drawMeteorWarnings(v);
   drawMeteors(v);
   drawPrediction();
-  drawParticles();
+  drawParticles(v);
   drawFrags();
   drawShip();
 }
@@ -3182,7 +3216,15 @@ function bindRotatedScroll(el) {
 }
 for (const el of document.querySelectorAll('#panel,.modeScreen')) bindRotatedScroll(el);
 let panelOpen = false;
+const qualitySelect=document.getElementById('qualitySelect');
+qualitySelect.addEventListener('change',()=>{
+  if(qualitySelect.value!=='auto' && !qualityLevels.includes(qualitySelect.value)) return;
+  S.quality=qualitySelect.value;
+  adaptiveLevel=0;qualitySamples=0;frameAverage=16.7;
+  viewportDirty=true;saveCfg();
+});
 function refreshPanel() {
+  qualitySelect.value=S.quality;
   for (const d of PANEL_ROWS) {
     d.inpEl.value = d.toSlider ? d.toSlider(S[d.key]) : S[d.key];
     d.valEl.textContent = d.fmt(S[d.key]);
@@ -3537,7 +3579,12 @@ cvs.addEventListener('pointerup', e => {
 });
 window.addEventListener('blur', releaseAllKeys);
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) releaseAllKeys();
+  if (document.hidden) {
+    releaseAllKeys();
+    activePointers.clear();heldFlightCodes.clear();blockedFlightCodes.clear();settlementGesture=null;
+    frameAverage=16.7;qualitySamples=0;
+  }
+  last=performance.now();acc=0;
 });
 
 function bindTouch(id, key) {
@@ -3559,13 +3606,13 @@ function bindTouch(id, key) {
     el.classList.toggle('active', pointers.size > 0);
   };
   el.addEventListener('pointerdown', on);
-  el.addEventListener('pointermove', e => {
+  window.addEventListener('pointermove', e => {
     if (!pointers.has(e.pointerId)) return;
     const bounds=el.getBoundingClientRect();
     if (e.clientX>=bounds.left && e.clientX<=bounds.right && e.clientY>=bounds.top && e.clientY<=bounds.bottom) return;
     off(e);
     if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
-  });
+  },true);
   window.addEventListener('pointerup', off, true);
   window.addEventListener('pointercancel', off, true);
   el.addEventListener('lostpointercapture', off);
@@ -3594,8 +3641,16 @@ let last = performance.now(), acc = 0;
 function frame(now) {
   resize();
   let dt = (now - last) / 1000; last = now;
+  if(S.quality==='auto' && state==='playing' && !isPaused() && !document.hidden && dt>0 && dt<0.2){
+    frameAverage+=(dt*1000-frameAverage)*0.045;
+    if(++qualitySamples>=90){
+      if(frameAverage>27) adaptiveLevel=Math.min(2,adaptiveLevel+1);
+      else if(frameAverage<18.5) adaptiveLevel=Math.max(0,adaptiveLevel-1);
+      qualitySamples=0;
+    }
+  }
   if (dt > 0.1) dt = 0.1;
-  if (!isPaused()) {
+  if (!isPaused() && !document.hidden) {
     acc += dt;
     let n = 0;
     while (acc >= FIXED && n < 12) { update(FIXED); acc -= FIXED; n++; }
@@ -3764,6 +3819,7 @@ function viewportDebugText() {
     'Pointer: coarse ' + coarseQuery.matches + ' · touch points ' + navigator.maxTouchPoints,
     'Container: ' + hostW + '×' + hostH + ' · logical ' + W + '×' + H + ' · direction mode: ' + directionMode +
       (virtualLandscape ? ' · virtual 90°' : ''),
+    'Quality: '+S.quality+' / '+(S.quality==='auto'?qualityLevels[adaptiveLevel]:S.quality),
     'Canvas: ' + cvs.width + '×' + cvs.height + ' px · CSS ' + rect.width + '×' + rect.height + ' CSS px',
     'Game: ' + (W >= H ? 'landscape' : 'portrait') + ' · ' + state + (isPaused() ? ' · paused' : '') +
       ' · viewport source: ' + (visual && preferVisual && visual.width > 0 &&
