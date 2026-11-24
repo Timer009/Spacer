@@ -738,6 +738,7 @@ async function playModes(browser,name,host) {
     assert.equal(await page.evaluate(() => game.ship.modelId),'falcon9');
     await page.evaluate(() => { crash('自动化验证'); game.tick(1750); });
     await page.getByRole('heading',{name:'自由飞行 · 飞行结束'}).waitFor();
+    await page.waitForFunction(()=>settlementReady());
     await page.getByRole('button',{name:'再飞一次'}).click();
     await page.waitForFunction(() => game.state==='playing');
     assert.deepEqual(await page.evaluate(() => [game.level,game.ship.modelId,game.lives]),[5,'falcon9',4]);
@@ -879,6 +880,7 @@ async function seaRecovery(browser,name,host) {
     });
     assert.equal(results.outcomes.length,6);
     console.log(name+' input-only full recovery',JSON.stringify(results));
+    await page.waitForFunction(()=>settlementReady());
     await page.locator('#freeResultScreen').getByRole('button',{name:'再飞一次'}).click();
     await page.evaluate(() => { game.tick(1250); game.draw(); });
     await page.setViewportSize({width:1280,height:720});
@@ -964,9 +966,49 @@ async function towerCatch(browser,name,host) {
     });
     assert.equal(results.length,6);
     await page.evaluate(()=>{game.tick(1900);game.draw();});
+    await page.waitForFunction(()=>settlementReady());
     await page.getByRole('button',{name:'再飞一次'}).click();
     assert.equal(await page.evaluate(()=>ship.modelId+':'+state),'superheavy:levelIntro');
     assert.deepEqual(errors,[]);
+  } finally {await page.close();}
+}
+async function settlementInput(browser,name,host) {
+  const [page,errors]=await open(browser,host,'/fix?compat=1',390,844);
+  try {
+    await page.evaluate(()=>{
+      const pointer=(type,id,target)=>target.dispatchEvent(new PointerEvent(type,{
+        pointerId:id,pointerType:'touch',isPrimary:id===1,button:0,bubbles:true}));
+      const key=(type,code,repeat=false)=>window.dispatchEvent(new KeyboardEvent(type,{code,repeat}));
+      for(const mission of [CAMPAIGN_MISSIONS[0],FREE_MISSIONS[0],...RECOVERY_MISSIONS]){
+        for(const landed of [true,false]){
+          startMission(mission,mission.modelId??'classic');game.tick(1220);
+          key('keydown','ArrowLeft');key('keydown','Space');
+          pointer('pointerdown',1,document.querySelector('#btnL'));
+          pointer('pointerdown',2,document.querySelector('#btnT'));
+          settleMission({landed,gained:400,stars:1,fuel:60,startY:ship.y});
+          if(keys.left||keys.up||settlementReady()) throw Error('held input survived settlement');
+          if(mission.mode==='campaign'&&!landed) state='gameover';
+          else showMissionEnd();
+          const expected=state;
+          const target=state==='freeResult'?document.querySelector('[data-action=retry]'):cvs;
+          for(let i=0;i<5;i++) target.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,detail:1}));
+          key('keydown','Space',true);
+          if(state!==expected) throw Error('stale or rapid input accepted');
+          pointer('pointerup',1,target);
+          if(!activePointers.has(2)) throw Error('second contact was lost');
+          pointer('pointerup',2,target);key('keyup','ArrowLeft');key('keyup','Space');
+          if(settlementReady()) throw Error('500ms lock missing');
+        }
+      }
+      render();
+    });
+    await page.setViewportSize({width:844,height:390});await size(page,844,390);
+    await page.waitForFunction(()=>settlementReady());
+    const retry=page.getByRole('button',{name:'再飞一次'});
+    const box=await retry.boundingBox();assert.ok(box.height>=44 && box.y+box.height<390-28);
+    await retry.tap();await page.waitForFunction(()=>state==='levelIntro'||state==='playing');
+    assert.deepEqual(errors,[]);
+    console.log(name+' settlement: all modes and outcomes, held keyboard and two touch contacts, rapid clicks, rotation and fresh tap PASS');
   } finally {await page.close();}
 }
 async function performanceSample(browser,name,host) {
@@ -1027,6 +1069,7 @@ async function performanceSample(browser,name,host) {
         await playModes(browser,name,host);
         await seaRecovery(browser,name,host);
         await towerCatch(browser,name,host);
+        await settlementInput(browser,name,host);
         if (name === 'chromium' || name === 'webkit') await performanceSample(browser,name,host);
       } finally { await browser.close(); }
     }
