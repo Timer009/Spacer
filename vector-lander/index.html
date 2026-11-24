@@ -90,6 +90,31 @@
     color:#bfe0ff;min-height:44px;padding:5px 0;cursor:pointer;border-radius:4px;
     font:12px 'Courier New','Microsoft YaHei',monospace}
   .skinBtn.active{background:rgba(70,150,255,.6);border-color:#59ffc8;color:#fff}
+  #homeBtn{position:absolute;left:calc(62px + var(--safe-l));top:calc(8px + var(--safe-t));z-index:10;font:12px monospace}
+  #homeBtn[hidden],#missionActions[hidden],.modeScreen[hidden]{display:none}
+  #missionActions{margin-bottom:12px}
+  .modeScreen{position:absolute;z-index:8;display:flex;flex-direction:column;overflow:auto;touch-action:pan-y;
+    inset:calc(58px + var(--safe-t)) calc(16px + var(--safe-r)) calc(12px + var(--safe-b)) calc(16px + var(--safe-l));
+    color:#e8f4ff;font:14px/1.4 'Courier New','Microsoft YaHei',monospace}
+  .modeContent{box-sizing:border-box;width:min(100%,720px);margin:auto;padding:clamp(12px,3%,24px);
+    background:rgba(8,18,34,.94);border:1px solid #345572;border-radius:12px}
+  .modeContent h1,.modeContent h2{margin:0 0 6px;font-size:clamp(21px,4vw,36px);line-height:1.1}
+  .modeContent p{margin:0 0 12px;color:#b4cce2}
+  .modeCards,.modeActions{display:grid;gap:8px}
+  .modeActions{grid-template-columns:repeat(auto-fit,minmax(min(100%,100px),1fr));margin-top:10px}
+  .wide-menu .modeCards{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .wide-menu #recoveryCards{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .modeCard,.modeActions button,.modeContent select{box-sizing:border-box;min-height:44px;padding:8px 10px;
+    color:#e8f4ff;background:#102944;border:1px solid #4e7595;border-radius:7px;font:inherit}
+  button.modeCard,.modeActions button,.modeContent select{cursor:pointer}
+  .modeCard{text-align:left}.modeCard strong{display:block;color:#91f0d3}
+  .modeCard span{display:block;color:#c3d4e4;font-size:12px}
+  .modeActions .primary{border-color:#59ffc8;color:#b6ffe9}
+  .modeContent label{display:block;margin-top:8px}
+  .modeContent select{display:block;width:100%;margin-top:4px}
+  .modeContent button:focus-visible,.modeContent select:focus-visible{outline:2px solid #59ffc8;outline-offset:2px}
+  .wide-menu .freeSelectors{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  #freeCompatibility{margin:6px 0 0;color:#ffda91;font-size:12px}
   #directionModes{margin:0 0 12px;padding:0;border:0}
   #directionModes legend{margin-bottom:5px;color:#e8f4ff}
   #nativeLandscape{width:100%;margin-top:6px}
@@ -115,6 +140,51 @@
 <button type="button" class="iconBtn" id="gear" aria-label="参数设置"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1 3 3 1v3l2 2-2 2v3l-3 1-1 3H9l-1-3-3-1v-3l-2-2 2-2V7l3-1zM15 12a3 3 0 1 0-6 0 3 3 0 0 0 6 0"/></svg></button>
 <button type="button" class="iconBtn" id="statsBtn" aria-label="航行统计"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M7 16v-5m5 5V7m5 9V4"/></svg></button>
 <button type="button" class="iconBtn" id="pauseBtn" aria-label="暂停"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14M15 5v14"/></svg></button>
+<button type="button" class="iconBtn" id="homeBtn" aria-label="返回玩法" hidden>玩法</button>
+<section class="modeScreen" id="titleScreen" aria-labelledby="gameTitle" hidden>
+  <div class="modeContent">
+    <h1 id="gameTitle">VECTOR LANDER</h1>
+    <p>矢量着陆 · 选择玩法</p>
+    <div class="modeCards">
+      <button type="button" class="modeCard" data-mode="campaign"><strong>太阳系战役</strong><span>十站航线 · 星级与解锁</span></button>
+      <button type="button" class="modeCard" data-mode="free"><strong>自由飞行</strong><span>自选场景和飞船 · 无限重试</span></button>
+      <button type="button" class="modeCard" data-mode="recovery"><strong>回收挑战</strong><span>海上回收与塔架捕获 · 即将开放</span></button>
+    </div>
+  </div>
+</section>
+<section class="modeScreen" id="freeSetupScreen" aria-labelledby="freeTitle" hidden>
+  <div class="modeContent">
+    <h2 id="freeTitle">自由飞行</h2>
+    <p>十个场景随时练习，飞行成绩与战役分开。</p>
+    <div class="freeSelectors">
+      <label for="freeScene">场景<select id="freeScene"></select></label>
+      <label for="freeModel">飞船<select id="freeModel"></select></label>
+    </div>
+    <p id="freeCompatibility" role="status"></p>
+    <div class="modeActions">
+      <button type="button" data-action="home">返回玩法</button>
+      <button type="button" class="primary" data-action="fly">开始飞行</button>
+    </div>
+  </div>
+</section>
+<section class="modeScreen" id="recoveryScreen" aria-labelledby="recoveryTitle" hidden>
+  <div class="modeContent">
+    <h2 id="recoveryTitle">回收挑战</h2>
+    <div class="modeCards" id="recoveryCards"></div>
+    <div class="modeActions"><button type="button" data-action="home">返回玩法</button></div>
+  </div>
+</section>
+<section class="modeScreen" id="freeResultScreen" aria-labelledby="freeResultTitle" hidden>
+  <div class="modeContent">
+    <h2 id="freeResultTitle"></h2>
+    <p id="freeResultInfo"></p>
+    <div class="modeActions">
+      <button type="button" class="primary" data-action="retry">再飞一次</button>
+      <button type="button" data-action="free">更换场景或飞船</button>
+      <button type="button" data-action="home">返回玩法</button>
+    </div>
+  </div>
+</section>
 <div id="rotateHint">
   <div class="rotPhone"></div>
   <div class="rotTitle">请横屏游玩</div>
@@ -126,6 +196,10 @@
 </div>
 <div id="panel" hidden>
   <div id="panelTitle">参数设置</div>
+  <div id="missionActions" class="skinBtns" hidden>
+    <button type="button" class="skinBtn" id="retryFree">重试本场</button>
+    <button type="button" class="skinBtn" id="returnMission">返回本模式</button>
+  </div>
   <fieldset id="directionModes">
     <legend>屏幕方向</legend>
     <div class="skinBtns">
@@ -444,6 +518,7 @@ function resize() {
   viewport.style.setProperty('--safe-r', safeRight + 'px');
   viewport.style.setProperty('--safe-b', safeBottom + 'px');
   viewport.style.setProperty('--safe-l', safeLeft + 'px');
+  viewport.classList.toggle('wide-menu', W >= H && W - safeLeft - safeRight >= 508);
   document.body.classList.toggle('touch-ui', touchUI());
   if (resized) {
     cvs.width = Math.round(W * DPR); cvs.height = Math.round(H * DPR);
@@ -564,6 +639,22 @@ function vib(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (
 
 /* ---------- 游戏状态 ---------- */
 let state = 'title', stateT = 0, manualPaused = false, rotatePaused = false;
+const CAMPAIGN_MISSIONS = LEVELS.map((level, levelIndex) => ({
+  mode:'campaign', levelIndex, modelId:level.campaignModel ?? 'classic',
+}));
+const FREE_MISSIONS = LEVELS.map((level, levelIndex) => ({
+  mode:'free', levelIndex,
+  // The Phobos practice route is the low-inertia training scenario.
+  models:level.D === 6 ? ['classic','falcon9'] : MODEL_KEYS,
+}));
+const RECOVERY_MISSIONS = [
+  {modelId:'falcon9', title:'海上回收', vehicle:'Falcon 9', status:'即将开放'},
+  {modelId:'superheavy', title:'塔架机械臂捕获', vehicle:'Super Heavy', status:'即将开放'},
+];
+let activeMission = null, missionResult = null;
+const freeChoice = {index:0, modelId:S.skin};
+function isFreeFlight() { return activeMission?.mode === 'free'; }
+function isModeMenu() { return state === 'title' || state === 'freeSetup' || state === 'recovery'; }
 function isPaused() { return manualPaused || panelOpen || rotatePaused; }
 let levelIdx = 0, levelDef = LEVELS[0];
 let terrain = null, pads = [], P = null, geysers = [];
@@ -786,6 +877,7 @@ function padY(p, t) {
 /* ---------- 关卡装载 ---------- */
 function loadLevel(i) {
   levelIdx = i; levelDef = LEVELS[i];
+  if (levelDef.duststorm) levelDef = { ...levelDef, duststorm:{ ...levelDef.duststorm } };
   particles = []; frags = []; banner = null; landPad = null;
   trail = []; trailT = 0;
   P = null; terrain = null; pads = []; geysers = [];
@@ -816,7 +908,7 @@ function loadLevel(i) {
 function spawnShip() {
   predictionDue = -Infinity;
   ship.visible = true; ship.flame = 0; ship.thrusting = false; landPad = null; trail = [];
-  ship.modelId = S.skin;
+  ship.modelId = activeMission?.modelId ?? S.skin;
   ship.spin = 0;
   ship.fuelCapacity = Math.round(levelDef.fuel * currentModel().tank);
   ship.fuel = ship.fuelCapacity;
@@ -839,23 +931,43 @@ function spawnShip() {
   }
 }
 /* 出发一关（航线图调用） */
-function launch(i) {
-  // 统一解锁校验：所有入口（键盘/鼠标/触屏）都走这里，不能只靠地图 UI 限制
-  if (!(S.unlockAll || i <= progress.unlocked)) {
+function launch(i) { return startMission(CAMPAIGN_MISSIONS[i]); }
+function startMission(mission, chosenModel = mission?.modelId) {
+  if (!mission || !MODEL_KEYS.includes(chosenModel)) return false;
+  const campaign = mission.mode === 'campaign';
+  if ((!campaign && mission.mode !== 'free') ||
+      (campaign ? chosenModel !== mission.modelId : !mission.models.includes(chosenModel))) return false;
+  if (campaign && !(S.unlockAll || mission.levelIndex <= progress.unlocked)) {
     announce('站点未解锁', '需先通关前一站', '#ffd75e', 1.6);
     sfxBeep(160, 0.12, 'square', 0.10, 110);
-    return;
+    return false;
   }
-  if (runFresh) { score = 0; lives = S.lives; runFresh = false; }
-  loadLevel(i);
+  if (campaign && runFresh) { score = 0; lives = S.lives; runFresh = false; }
+  if (panelOpen) togglePanel();
+  activeMission = {...mission, modelId:chosenModel};
+  missionResult = null;
+  manualPaused = false;
+  cancelViewportInput();
+  loadLevel(mission.levelIndex);
   sfxBeep(440, 0.1, 'square', 0.12, 660);
+  return true;
+}
+function enterMenu(next) {
+  if (panelOpen) togglePanel();
+  state = next; mapStatsOpen = false;
+  activeMission = null; missionResult = null; manualPaused = false;
+  syncOrientationHint();
+  setAmbience(null); cancelViewportInput(); banner = null;
+}
+function gotoHome() { enterMenu('title'); }
+function gotoFreeSetup() { enterMenu('freeSetup'); refreshFreeOptions(); }
+function returnToMode() {
+  if (isFreeFlight()) gotoFreeSetup();
+  else gotoMap();
 }
 function gotoMap() {
-  state = 'map'; mapStatsOpen = false; touchSelection = null;
-  manualPaused = false;
-  syncOrientationHint();
+  enterMenu('map');
   mapSel = clamp(progress.unlocked, 0, NLV - 1);
-  setAmbience(null); releaseAllKeys(); banner = null;
 }
 
 /* ---------- 飞船型号、接触几何与操纵 ---------- */
@@ -1115,24 +1227,18 @@ function judgeLanding(pt, normal, pad) {
     ship.vx = 0; ship.vy = 0; ship.spin = 0; ship.thrusting = false;
     const fuelBonus = Math.round(ship.fuel * (levelDef.fuel / ship.fuelCapacity)) * 5;
     const gained = 400*pad.m + fuelBonus + Math.max(0, Math.round((50 - spd)*8));
-    score += gained;
-    if (score > best) { best = score; saveBest(); }
     // 星级：1 基础 + 燃料充足 + 柔和触地
     const starN = clamp(1 + (ship.fuel >= ship.fuelCapacity*0.35 ? 1 : 0) + (spd <= 20 ? 1 : 0), 1, 3);
-    progress.stars[levelIdx] = Math.max(progress.stars[levelIdx], starN);
-    progress.unlocked = Math.max(progress.unlocked, Math.min(levelIdx + 1, NLV - 1));
-    saveProgress();
-    stats.landings++; if (starN === 3) stats.perfects++;
-    saveStats();
+    settleMission({landed:true, gained, stars:starN, fuel:Math.round(ship.fuel)});
     const starTxt = '★'.repeat(starN) + '☆'.repeat(3 - starN);
-    announce('着陆成功 SOFT LANDING  +' + gained,
-             starTxt + ' · 燃料加成 +' + fuelBonus + ' · 平台 ×' + pad.m + ' · 剩余燃料 ' + Math.round(ship.fuel),
+    announce(isFreeFlight() ? '着陆成功 SOFT LANDING' : '着陆成功 SOFT LANDING  +' + gained,
+             isFreeFlight() ? '剩余燃料 ' + missionResult.fuel :
+               starTxt + ' · 燃料加成 +' + fuelBonus + ' · 平台 ×' + pad.m + ' · 剩余燃料 ' + missionResult.fuel,
              '#7dffb0', 2.0);
     sfxLand(); vib(30);
     spawnDust(ship.x, ship.y + 8, 20);
     ship.visible = true;
     setThrustSound(false); lastThrustSnd = false;
-    state = 'landed'; stateT = 1.8;
   } else {
     let why = !pad ? '偏离着陆平台' :
               align < ALIGN_MIN ? '着陆姿态过斜' :
@@ -1143,14 +1249,42 @@ function judgeLanding(pt, normal, pad) {
 function crash(why) {
   ship.visible = false; ship.thrusting = false; ship.flame = 0;
   setThrustSound(false); lastThrustSnd = false;
-  lives--; stats.crashes++; saveStats();
+  settleMission({landed:false, reason:why, fuel:Math.round(ship.fuel)});
   explode(ship.x, ship.y, ship.vx, ship.vy);
   shake = 18; flashA = 0.5; vib(60);
   sfxExplosion();
   announce('坠毁 CRASH · ' + why,
-           lives > 0 ? '剩余飞船 ×' + lives : '飞船已耗尽',
+           isFreeFlight() ? '可以再次尝试' : lives > 0 ? '剩余飞船 ×' + lives : '飞船已耗尽',
            '#ff6b5e', 1.7);
-  state = 'crashed'; stateT = 1.7;
+}
+function settleMission(result) {
+  missionResult = result;
+  state = result.landed ? 'landed' : 'crashed';
+  stateT = result.landed ? 1.8 : 1.7;
+  if (isFreeFlight()) return;
+  if (result.landed) {
+    score += result.gained;
+    if (score > best) { best = score; saveBest(); }
+    progress.stars[levelIdx] = Math.max(progress.stars[levelIdx], result.stars);
+    progress.unlocked = Math.max(progress.unlocked, Math.min(levelIdx + 1, NLV - 1));
+    saveProgress();
+    stats.landings++;
+    if (result.stars === 3) stats.perfects++;
+  } else {
+    lives--; stats.crashes++;
+  }
+  saveStats();
+}
+function showMissionEnd() {
+  if (!isFreeFlight()) { gotoMap(); return; }
+  state = 'freeResult';
+  manualPaused = false;
+  cancelViewportInput();
+  banner = null;
+  const result = missionResult;
+  document.getElementById('freeResultTitle').textContent = result.landed ? '自由飞行 · 着陆成功' : '自由飞行 · 飞行结束';
+  document.getElementById('freeResultInfo').textContent = stationTitle(levelDef) + ' · ' + currentModel().label +
+    (result.landed ? ' · 剩余燃料 ' + result.fuel : ' · ' + result.reason);
 }
 
 /* ---------- 特效 ---------- */
@@ -1313,7 +1447,7 @@ function update(dt) {
   flashA = Math.max(0, flashA - 1.7*dt);
   updateParticles(dt);
   updateAsteroids(dt);
-  if (state !== 'map' && state !== 'title') {
+  if (state !== 'map' && !isModeMenu() && state !== 'freeResult') {
     if (geysers.length) spawnPlumes(dt);
     updateMeteors(dt);
     if (levelDef.duststorm) spawnStormDust(dt);
@@ -1345,12 +1479,13 @@ function update(dt) {
       }
       camFollow(dt);
       stateT -= dt;
-      if (stateT <= 0) gotoMap();
+      if (stateT <= 0) showMissionEnd();
       break;
     case 'crashed':
       stateT -= dt;
       if (stateT <= 0) {
-        if (lives > 0) { spawnShip(); state = 'levelIntro'; stateT = 0.8; }
+        if (isFreeFlight()) showMissionEnd();
+        else if (lives > 0) { spawnShip(); state = 'levelIntro'; stateT = 0.8; }
         else { state = 'gameover'; runFresh = true; }
       }
       break;
@@ -2164,10 +2299,11 @@ function drawHUD() {
   const hudLift = hudLiftForTouch();
   const hudX = 18 + safeLeft, hudR = W - 18 - safeRight;
   const headY = safeTop + 56;
-  hudText('SCORE ' + String(score).padStart(6, '0'), W/2, safeTop + 16, 15, '#e8f4ff', 'center');
-  hudText('STATION ' + (levelIdx+1) + '/' + NLV + ' · ' + stationTitle(levelDef), hudX, headY, 12, '#7fb0d8');
-  hudText('×' + lives, hudR, headY, 13, '#9df', 'right');
-  drawMiniShip(hudR - 24, headY + 7, 1.25, lives > 0);
+  const free = isFreeFlight();
+  hudText(free ? currentModel().label : 'SCORE ' + String(score).padStart(6, '0'), W/2, safeTop + 16, 15, '#e8f4ff', 'center');
+  hudText((free ? '自由飞行' : 'STATION ' + (levelIdx+1) + '/' + NLV) + ' · ' + stationTitle(levelDef), hudX, headY, 12, '#7fb0d8');
+  hudText(free ? '∞' : '×' + lives, hudR, headY, 13, '#9df', 'right');
+  drawMiniShip(hudR - 24, headY + 7, 1.25, free || lives > 0);
   if (muted) hudText('静音', W/2, safeTop + 35, 10, '#7fb0d8', 'center');
 
   const fw = compactHUD ? 132 : 170;
@@ -2293,27 +2429,21 @@ function centerText(txt, y, size, color, bold) {
   if (measured > width) ctx.font = ctx.font.replace(size + 'px', Math.floor(size*width/measured) + 'px');
   ctx.fillText(txt, (W+safeLeft-safeRight)/2, y);
 }
-function leftText(txt, x, y, size, color, bold, width) {
-  ctx.fillStyle = color;
-  ctx.font = `${bold?'bold ':''}${size}px 'Courier New','Microsoft YaHei',monospace`;
-  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  const measured = ctx.measureText(txt).width;
-  if (measured > width) ctx.font = ctx.font.replace(size + 'px', Math.floor(size*width/measured) + 'px');
-  ctx.fillText(txt, x, y);
-}
 function drawOverlays() {
   const dim = a => { ctx.fillStyle = `rgba(3,6,14,${a})`; ctx.fillRect(0, 0, W, H); };
   if (state === 'levelIntro') {
     dim(0.45);
     const nameSize = Math.min(26, W*0.058);
     const hintSize = W < 420 ? 12 : 14;
-    centerText('STATION ' + (levelIdx+1) + ' / ' + NLV + ' · ' + stationTitle(levelDef),
+    centerText(isFreeFlight() ? '自由飞行 · ' + currentModel().label :
+               'STATION ' + (levelIdx+1) + ' / ' + NLV + ' · ' + stationTitle(levelDef),
                H*0.34, Math.min(20, W*0.052), '#7fb0d8');
     centerText(levelDef.name, H*0.43, nameSize, '#e8f4ff', true);
     const gtxt = levelDef.type === 'planetoid'
       ? 'g(表面) ≈ ' + Math.round(levelDef.GM*S.gScale/(levelDef.R*levelDef.R)*10)/10 + ' · 燃料 ' + ship.fuelCapacity
       : 'g = ' + Math.round(levelDef.g*S.gScale*10)/10 + ' · 燃料 ' + ship.fuelCapacity;
-    centerText(gtxt, H*0.51, W < 420 ? 13 : 15, '#ffd75e');
+    centerText(activeMission?.mode === 'campaign' ? gtxt + ' · ' + currentModel().label : gtxt,
+               H*0.51, W < 420 ? 13 : 15, '#ffd75e');
     centerText(levelDef.hint, H*0.59, hintSize, '#9db8d8');
   }
   if (isPaused() && state === 'playing' && !panelOpen) {
@@ -2327,60 +2457,8 @@ function drawOverlays() {
     centerText('本次航行 ' + score + ' · 最佳 ' + best, H*0.48, 16, '#e8f4ff');
     centerText(touchUI() ? '点击返回航线图' : '按任意键返回航线图', H*0.58, 14, '#7fb0d8');
   }
-  if (state === 'landed' || state === 'crashed') dim(0.35);
-  if (state === 'title') drawTitle();
+  if (state === 'landed' || state === 'crashed' || state === 'freeResult') dim(0.35);
 }
-function drawTitle() {
-  ctx.fillStyle = 'rgba(3,6,14,0.35)'; ctx.fillRect(0, 0, W, H);
-  const touch = touchUI();
-  const L = touch ? [
-    '◀ ▶ 旋转机头    ▲ 主引擎',
-    '按住 ▲ 持续推力 · 松开继续滑行',
-    '目标：慢速、直立，落在发光平台上',
-    '齿轮 ⚙ 调参数 · 地图点站点两次出发',
-  ] : [
-    '← → 旋转机头（或 A / D）    ↑ / W / 空格 主引擎',
-    'G 调参数 · P 暂停 · M 静音 · R 重开 · ESC 返回航线图',
-    '目标：以足够慢的速度、直立姿态降落在发光平台上',
-    '惯性真实存在 —— 松开按键后你会继续漂移',
-  ];
-  // 手机横屏：左右双栏，避免竖排文字在矮屏上互相重叠
-  if (W > H * 1.2 && H < 560) {
-    const lx = Math.max(W*0.06, safeLeft + 12), rx = W*0.54;
-    const leftWidth = W*0.49 - lx, rightWidth = W - safeRight - 12 - rx;
-    // 右栏暗色底板，避免说明文字与背景天体叠在一起
-    ctx.fillStyle = 'rgba(3,6,14,.56)';
-    ctx.fillRect(W*0.51, H*0.06, W*0.47, H*0.60);
-    ctx.shadowColor = '#56d9ff'; ctx.shadowBlur = 26;
-    leftText('VECTOR LANDER', lx, H*0.26, Math.min(44, W*0.052), '#e8f4ff', true, leftWidth);
-    ctx.shadowBlur = 0;
-    leftText('矢 量 着 陆 · 太 阳 系 航 线', lx, H*0.40, 17, '#56d9ff', false, leftWidth);
-    leftText('向 Spacewar! · Lunar Lander · Asteroids 致敬', lx, H*0.49, 9, '#7fb0d8', false, leftWidth);
-    ctx.strokeStyle = 'rgba(120,220,255,.18)'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(W*0.50, H*0.14); ctx.lineTo(W*0.50, H*0.62); ctx.stroke();
-    const startY = H*0.17, lh = W < 700 ? 20 : 22, rSize = W < 700 ? 11 : 12;
-    L.forEach((t, i) => leftText(t, rx, startY + i*lh, rSize, i < 2 ? '#9db8d8' : '#ffd75e', false, rightWidth));
-    let y = startY + 4*lh + 10;
-    if (best > 0) { leftText('最佳航行 ' + best, rx, y, 13, '#7dffb0'); y += 24; }
-    if (Math.sin(time*3.2) > -0.25)
-      leftText(touch ? '— 点击屏幕 进入航线图 —' : '— 按任意键 / 点击屏幕 进入航线图 —',
-               rx, y + 12, W < 700 ? 15 : 16, '#e8f4ff', true, rightWidth);
-    centerText('纯 Canvas 手写牛顿力学 · 零依赖 · 支持触屏', Math.min(H*0.93, H-safeBottom-8), 10, '#556a88');
-    return;
-  }
-  ctx.shadowColor = '#56d9ff'; ctx.shadowBlur = 26;
-  centerText('VECTOR LANDER', H*0.24, Math.min(64, W*0.09), '#e8f4ff', true);
-  ctx.shadowBlur = 0;
-  centerText('矢 量 着 陆 · 太 阳 系 航 线', H*0.24 + Math.min(52, W*0.075), 22, '#56d9ff');
-  centerText('向 Spacewar! · Lunar Lander · Asteroids 致敬', H*0.38, 13, '#7fb0d8');
-  L.forEach((t, i) => centerText(t, H*0.48 + i*24, touch ? 13 : 14, i < 2 ? '#9db8d8' : '#ffd75e'));
-  if (best > 0) centerText('最佳航行 ' + best, Math.max(H*0.64, H*0.48 + 94), 14, '#7dffb0');
-  if (Math.sin(time*3.2) > -0.25)
-    centerText(touch ? '— 点击屏幕 进入航线图 —' : '— 按任意键 / 点击屏幕 进入航线图 —',
-               Math.max(H*0.72, H*0.48 + 121), 18, '#e8f4ff', true);
-  centerText('纯 Canvas 手写牛顿力学 · 零依赖 · 支持触屏', Math.min(H*0.92, H-safeBottom-12), 12, '#556a88');
-}
-
 /* ---------- 航线图 ---------- */
 function isCompactMap() { return W < 560 || (touchUI() && H > W && W < 850); }
 function isLandscapeMap() { return W >= 560 && W > H && H < 560; }
@@ -2497,7 +2575,7 @@ function drawMap() {
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     }
     centerText('点站点选择 · 再点一次出发', Math.min(H*0.935, H-safeBottom-26), 13, '#7fb0d8');
-    centerText('左上角设置 · 右上角统计', Math.min(H*0.968, H-safeBottom-8), 11, '#556a88');
+    centerText('指定飞船 · ' + SHIP_MODELS[CAMPAIGN_MISSIONS[mapSel].modelId].label, Math.min(H*0.968, H-safeBottom-8), 11, '#9db8d8');
     if (mapStatsOpen) drawMapStats();
     return;
   }
@@ -2669,6 +2747,73 @@ const PANEL_CHECKS = [
 const PANEL_MODELS = MODEL_KEYS.map(key => ({key}));
 const modelNote = document.createElement('div');
 modelNote.className = 'skinLab';
+const freeScene = document.getElementById('freeScene');
+const freeModel = document.getElementById('freeModel');
+const homeBtn = document.getElementById('homeBtn');
+const missionActions = document.getElementById('missionActions');
+const retryFreeBtn = document.getElementById('retryFree');
+const modeScreens = {
+  title:document.getElementById('titleScreen'),
+  freeSetup:document.getElementById('freeSetupScreen'),
+  recovery:document.getElementById('recoveryScreen'),
+  freeResult:document.getElementById('freeResultScreen'),
+};
+function refreshFreeOptions() {
+  const mission = FREE_MISSIONS[freeChoice.index];
+  if (!mission.models.includes(freeChoice.modelId)) freeChoice.modelId = mission.models[0];
+  freeScene.value = String(freeChoice.index);
+  for (const option of freeModel.options) option.disabled = !mission.models.includes(option.value);
+  freeModel.value = freeChoice.modelId;
+  document.getElementById('freeCompatibility').textContent = mission.models.length < MODEL_KEYS.length
+    ? '引力井练习限经典矢量与猎鹰 9。' : '';
+}
+function retryFreeFlight() {
+  if (isFreeFlight()) startMission(activeMission);
+}
+function buildModeMenus() {
+  for (const mission of FREE_MISSIONS) {
+    const {levelIndex} = mission;
+    const level = LEVELS[levelIndex];
+    freeScene.add(new Option('D' + level.D + ' · ' + stationTitle(level), String(levelIndex)));
+  }
+  for (const id of MODEL_KEYS) freeModel.add(new Option(SHIP_MODELS[id].label,id));
+  freeScene.addEventListener('change', () => {
+    const mission = FREE_MISSIONS[Number(freeScene.value)];
+    if (mission) freeChoice.index = mission.levelIndex;
+    refreshFreeOptions();
+  });
+  freeModel.addEventListener('change', () => {
+    if (FREE_MISSIONS[freeChoice.index].models.includes(freeModel.value)) freeChoice.modelId = freeModel.value;
+    refreshFreeOptions();
+  });
+  for (const mission of RECOVERY_MISSIONS) {
+    const card = document.createElement('article');
+    card.className = 'modeCard';
+    const title = document.createElement('strong');
+    title.textContent = mission.title;
+    const detail = document.createElement('span');
+    detail.textContent = mission.vehicle + ' · ' + mission.status;
+    card.append(title,detail);
+    document.getElementById('recoveryCards').append(card);
+  }
+  const actions = {
+    campaign:gotoMap, free:gotoFreeSetup, recovery:() => enterMenu('recovery'),
+    home:gotoHome, fly:() => startMission(FREE_MISSIONS[freeChoice.index],freeChoice.modelId),
+    retry:retryFreeFlight,
+  };
+  for (const screen of Object.values(modeScreens)) screen.addEventListener('click', e => {
+    const button = e.target.closest('button[data-mode],button[data-action]');
+    if (!button || modeScreens[state] !== screen || panelOpen || document.body.classList.contains('rotate-hint')) return;
+    audioInit();
+    actions[button.dataset.mode ?? button.dataset.action]();
+  });
+  homeBtn.addEventListener('click', () => {
+    if (mapStatsOpen) mapStatsOpen = false;
+    else if (state === 'map') gotoHome();
+  });
+  retryFreeBtn.addEventListener('click', retryFreeFlight);
+  document.getElementById('returnMission').addEventListener('click', returnToMode);
+}
 let panelOpen = false;
 function refreshPanel() {
   for (const d of PANEL_ROWS) {
@@ -2681,7 +2826,7 @@ function refreshPanel() {
     d.btnEl.classList.toggle('active', selected);
     d.btnEl.setAttribute('aria-pressed', String(selected));
   }
-  modelNote.textContent = SHIP_MODELS[S.skin].handling + '。下次起飞、重置或重生生效。';
+  modelNote.textContent = SHIP_MODELS[S.skin].handling + '。自由飞行默认型号，战役由任务指定。';
 }
 function buildPanel() {
   const rows = document.getElementById('panelRows');
@@ -2696,7 +2841,7 @@ function buildPanel() {
     inp.addEventListener('input', () => {
       const raw = parseFloat(inp.value);
       S[d.key] = d.fromSlider ? d.fromSlider(raw) : raw;
-      if (d.key === 'lives') lives = S.lives;        // 飞船数量立即生效
+      if (d.key === 'lives' && !isFreeFlight() && state !== 'freeSetup') lives = S.lives;
       val.textContent = d.fmt(S[d.key]);
       saveCfg();
     });
@@ -2714,13 +2859,13 @@ function buildPanel() {
   }
   const skinRow = document.createElement('div'); skinRow.className = 'skinRow';
   const skinLab = document.createElement('div'); skinLab.className = 'skinLab';
-  skinLab.textContent = '飞船型号';
+  skinLab.textContent = '自由飞行默认型号';
   const skinBtns = document.createElement('div'); skinBtns.className = 'skinBtns';
   for (const d of PANEL_MODELS) {
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'skinBtn'; b.textContent = SHIP_MODELS[d.key].label;
     b.addEventListener('click', () => {
-      S.skin = d.key; saveCfg(); refreshPanel();
+      S.skin = d.key; freeChoice.modelId = d.key; saveCfg(); refreshPanel();
     });
     d.btnEl = b; skinBtns.appendChild(b);
   }
@@ -2735,6 +2880,7 @@ function togglePanel() {
   if (panelOpen) releaseAllKeys();
   if (!panelOpen) {
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    if (state === 'freeSetup') refreshFreeOptions();
   }
 }
 document.getElementById('gear').addEventListener('click', () => {
@@ -2866,9 +3012,12 @@ function togglePause() {
 pauseBtn.addEventListener('click', togglePause);
 document.getElementById('btnClose').addEventListener('click', togglePanel);
 document.getElementById('btnReset').addEventListener('click', () => {
-  S = { ...S_DEF }; saveCfg(); refreshPanel(); lives = S.lives;
+  S = { ...S_DEF }; freeChoice.modelId = S.skin;
+  saveCfg(); refreshPanel();
+  if (!isFreeFlight() && state !== 'freeSetup') lives = S.lives;
 });
 buildPanel();
+buildModeMenus();
 
 /* ---------- 输入 ---------- */
 const touchControls = [];
@@ -2895,17 +3044,18 @@ window.addEventListener('keydown', e => {
   const c = e.code;
   if (c === 'Tab' || e.ctrlKey || e.metaKey || e.altKey) return;
   if (debugEnabled && debugPanel.contains(e.target)) return;
-  if (e.target instanceof HTMLButtonElement || e.target instanceof HTMLInputElement) {
+  if (e.target instanceof HTMLButtonElement || e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) {
     if (c === 'Space' || c === 'Enter' || c.startsWith('Arrow')) return;
   }
   if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(c)) e.preventDefault();
   if (c === 'KeyG') { if (!e.repeat) togglePanel(); return; }
+  if (panelOpen && c === 'Escape') { togglePanel(); return; }
   if (panelOpen || document.body.classList.contains('rotate-hint')) return;
   if (c === 'KeyM') { muted = !muted; if (master) master.gain.value = muted ? 0 : 0.5; return; }
   if (c === 'Escape') {
     if (mapStatsOpen) { mapStatsOpen = false; return; }
-    if (state === 'map') state = 'title';
-    else if (state !== 'title') gotoMap();
+    if (state === 'map' || state === 'freeSetup' || state === 'recovery') gotoHome();
+    else if (state !== 'title') returnToMode();
     return;
   }
   if (state === 'map') {
@@ -2920,9 +3070,9 @@ window.addEventListener('keydown', e => {
     else if (c === 'KeyS') mapStatsOpen = !mapStatsOpen;
     return;
   }
-  if (state === 'title')   { gotoMap(); return; }
+  if (state === 'title')   { if (c === 'Enter' || c === 'Space') gotoMap(); return; }
   if (state === 'gameover'){ gotoMap(); return; }
-  if (state === 'landed')  { gotoMap(); return; }
+  if (state === 'landed')  { showMissionEnd(); return; }
   if (state === 'playing') {
     if (c === 'KeyP') { if (!e.repeat) togglePause(); return; }
     if (isPaused()) return;
@@ -2949,7 +3099,6 @@ cvs.addEventListener('pointerup', e => {
       Math.hypot(e.clientX-tap.x, e.clientY-tap.y) > 12) return;
   audioInit();
   if (state === 'playing' && isPaused()) { togglePause(); return; }
-  if (state === 'title') { gotoMap(); return; }
   if (state === 'map') {
     if (mapStatsOpen) { mapStatsOpen = false; return; }   // 统计面板：点击只关面板，不穿透到节点
     const bounds = cvs.getBoundingClientRect();
@@ -2966,7 +3115,8 @@ cvs.addEventListener('pointerup', e => {
     }
     return;
   }
-  if (state === 'landed' || state === 'gameover') { gotoMap(); return; }
+  if (state === 'landed') showMissionEnd();
+  if (state === 'gameover') gotoMap();
 });
 window.addEventListener('blur', releaseAllKeys);
 document.addEventListener('visibilitychange', () => {
@@ -3035,8 +3185,25 @@ function frame(now) {
 }
 
 /* ---------- 渲染入口 ---------- */
+let shownModeScreen = null;
+function syncModeScreens() {
+  const next = modeScreens[state] ?? null;
+  if (next !== shownModeScreen) {
+    if (shownModeScreen) shownModeScreen.hidden = true;
+    if (next) next.hidden = false;
+    shownModeScreen = next;
+  }
+  if (next) {
+    const blocked = panelOpen || document.body.classList.contains('rotate-hint');
+    if (next.inert !== blocked) next.inert = blocked;
+  }
+  homeBtn.hidden = state !== 'map' || panelOpen;
+  missionActions.hidden = !panelOpen || !activeMission;
+  retryFreeBtn.hidden = !isFreeFlight();
+}
 function render() {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  syncModeScreens();
   // 触控按钮只在可操控的飞行状态出现；地图使用点选，不再混入方向/点火键
   const playing = state === 'playing';
   if (!playing && (keyboard.size || touchControls.some(({pointers}) => pointers.size))) releaseAllKeys();
@@ -3049,6 +3216,10 @@ function render() {
   }
   document.body.classList.toggle('map-open', state === 'map');
   ctx.fillStyle = '#050810'; ctx.fillRect(0, 0, W, H);
+  if (isModeMenu()) {
+    drawStars();
+    return;
+  }
   if (state === 'map') {
     drawStars();
     drawMap();
@@ -3090,6 +3261,7 @@ window.game = {
   get levelDef() { return levelDef; }, get cam() { return cam; },
   get settings() { return S; }, get progress() { return progress; },
   get stats() { return stats; }, get mapSel() { return mapSel; },
+  get mode() { return activeMission?.mode ?? null; },
   get best() { return best; },
   teleport(x, y, vx = 0, vy = 0, a = 0) {
     if (state === 'levelIntro') state = 'playing';
@@ -3097,6 +3269,7 @@ window.game = {
     ship.fuel = Math.max(ship.fuel, 30); ship.visible = true;
   },
   jump(n) {
+    activeMission = null; missionResult = null;
     score = 0; lives = S.lives; runFresh = false;
     loadLevel(clamp(n, 0, NLV - 1)); state = 'playing';
   },
@@ -3125,7 +3298,7 @@ function viewportDebugText() {
   const orientation = screen.orientation;
   const standalone = matchMedia('(display-mode: standalone)').matches;
   return [
-    'Spacer · Sprint 10 飞船物理',
+    'Spacer · Sprint 11 游戏模式',
     'Git commit: ' + (commit || '当前 URL 未固定到提交'),
     'Browser: ' + navigator.userAgent,
     'Context: ' + (window.top === window ? 'top-level' : 'embedded') + (standalone ? ' · standalone' : ''),

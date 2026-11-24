@@ -9,7 +9,7 @@ const { chromium, webkit, firefox } = require(process.env.SPACER_TEST_PLAYWRIGHT
 const root = path.resolve(__dirname, '..');
 const evidence = process.env.SPACER_EVIDENCE_DIR || fs.mkdtempSync(path.join(os.tmpdir(), 'spacer-hotfix-'));
 const base = execFileSync('git', ['-C', root, 'show', 'a10a463:vector-lander/index.html']);
-const release = execFileSync('git', ['-C', root, 'show', 'fbc8e0f:vector-lander/index.html']);
+const release = execFileSync('git', ['-C', root, 'show', '5536ffc:vector-lander/index.html']);
 const html = fs.readFileSync(path.join(root, 'vector-lander/index.html'));
 const probe = fs.readFileSync(path.join(root, 'vector-lander/orientation-check.html'));
 const profiles = [
@@ -136,7 +136,7 @@ async function dynamic(browser, name, host, setup, representative) {
     let insets = await safeArea(page,representative ? landscapeSafe : [0,0,0,0]);
     if (representative) await page.screenshot({path:path.join(evidence,name+'-title-landscape.png')});
     assert.equal(await page.evaluate(() => game.state),'title');
-    await page.mouse.click(lw/2,lh/2);
+    await page.getByRole('button',{name:/太阳系战役/}).click();
     await page.waitForFunction(() => game.state === 'map');
     if (mobile) {
       const stats = page.locator('#statsBtn');
@@ -342,7 +342,7 @@ async function compatibleLandscape(browser,name,host) {
     assert.deepEqual(await page.evaluate(() => [cvs.width,cvs.height]),[1688,780]);
     await sizeVirtual(page,390,844);
     if (await page.locator('#panel').isVisible()) await page.locator('#btnClose').click();
-    await page.mouse.click(195,422);
+    await page.getByRole('button',{name:/太阳系战役/}).click();
     await page.waitForFunction(() => game.state === 'map');
     await page.screenshot({path:path.join(evidence,name+'-virtual-map.png')});
     // Both the inverse rotation and a scaled container must map to the first station.
@@ -502,7 +502,8 @@ async function containerAndNative(browser,name,host) {
 }
 async function regression(browser,name,host) {
   const comparison = [];
-  const runs = [['/release','classic'], ['/fix','classic'], ['/fix','falcon9'], ['/fix','starship']];
+  // A saved Starship choice must not alter the campaign's assigned ship.
+  const runs = [['/release','classic'], ['/fix','starship']];
   for (const [route,modelId] of runs) {
     const [page,errors] = await open(browser,host,route,568,320,true,instrument,true,{vl_cfg:{skin:modelId}});
     try {
@@ -517,7 +518,7 @@ async function regression(browser,name,host) {
         for (let i=0;i<10;i++) {
           gotoMap(); runFresh = true; launch(i); require(game.state === 'levelIntro','legal launch '+i);
           game.tick(1210); require(game.state === 'playing','intro '+i);
-          if (isNew) require(ship.modelId === modelId && ship.fuelCapacity === Math.round(levelDef.fuel * currentModel().tank),'spawn model and tank '+i);
+          if (isNew) require(ship.modelId === 'classic' && game.settings.skin === modelId && ship.fuelCapacity === levelDef.fuel,'assigned model and tank '+i);
           const fuel = game.ship.fuel;
           window.dispatchEvent(new KeyboardEvent('keydown',{code:'ArrowUp'}));
           game.tick(120);
@@ -553,8 +554,8 @@ async function regression(browser,name,host) {
         require(JSON.parse(storage[1]).landings===10,'persisted stats');
         return {flights,storage};
       }, {isNew:route==='/fix',modelId});
-      if (modelId === 'classic') comparison.push(result);
-      if (route === '/fix' && modelId === 'classic') {
+      comparison.push(result);
+      if (route === '/fix') {
         await page.setViewportSize({width:320,height:568});
         await page.evaluate(() => { __frames.frozen = false; });
         await size(page,320,568);
@@ -597,7 +598,7 @@ async function regression(browser,name,host) {
     } finally { await page.close(); }
   }
   assert.deepEqual(comparison[1],comparison[0],'seeded flight states, prediction and landings unchanged from baseline');
-  console.log(name+' regression: 3 models × 10 starts, thrust/prediction, hard collisions/restarts, assisted 3-star landings and saved progression; classic flight/forecast/save exactly match Sprint 09; moving decks and rotating settlement PASS');
+  console.log(name+' campaign: 10 assigned-model starts, forecasts, collisions and assisted landings match Sprint 10 exactly; saved progression, moving decks and rotating settlement PASS');
 }
 async function vehicleControls(browser,name,host) {
   const [page,errors] = await open(browser,host,'/fix',568,320,true,instrument,true,{
@@ -681,6 +682,99 @@ async function vehicleControls(browser,name,host) {
     console.log(name+' vehicle controls: old saves, next-launch/reset model, distinct mass/thrust/tank/burn/inertia/hull and exact first live prediction sample PASS; D10 forecast ms '+JSON.stringify(timings));
   } finally { await page.close(); }
 }
+async function playModes(browser,name,host) {
+  const [page,errors] = await open(browser,host,'/fix?compat=1',390,844,true,instrument,false,{
+    vl_cfg:{skin:'starship'},
+    vl_progress:{unlocked:1,stars:[3,0,0,0,0,0,0,0,0,0]},
+    vl_stats:{landings:2,crashes:1,perfects:1},
+    vl_best:1234,
+  });
+  try {
+    await sizeVirtual(page,390,844);
+    await page.getByRole('button',{name:/回收挑战/}).click();
+    const recovery = page.locator('#recoveryScreen');
+    await recovery.getByText('Falcon 9 · 即将开放').waitFor();
+    await recovery.getByText('Super Heavy · 即将开放').waitFor();
+    assert.equal(await recovery.getByRole('button').count(),1);
+    await recovery.getByRole('button',{name:'返回玩法'}).click();
+    await page.getByRole('button',{name:/自由飞行/}).click();
+    await page.locator('#freeSetupScreen').waitFor();
+    assert.equal(await page.locator('#freeScene option').count(),10);
+    assert.equal(await page.locator('#freeModel').inputValue(),'starship');
+    await page.locator('#freeScene').selectOption('5');
+    assert.equal(await page.locator('#freeModel option[value="starship"]').evaluate(option => option.disabled),true);
+    assert.equal(await page.locator('#freeModel').inputValue(),'classic');
+    await page.locator('#freeModel').selectOption('falcon9');
+    await page.getByRole('button',{name:'开始飞行'}).click();
+    await page.waitForFunction(() => game.mode==='free' && game.state==='playing');
+    assert.deepEqual(await page.evaluate(() => [game.level,game.ship.modelId]),[5,'falcon9']);
+    await page.setViewportSize({width:844,height:390});
+    await size(page,844,390);
+    await page.locator('#gear').click();
+    await page.getByRole('button',{name:'星舰',exact:true}).click();
+    await page.getByRole('button',{name:'重试本场'}).click();
+    await page.waitForFunction(() => game.state==='playing');
+    assert.equal(await page.evaluate(() => game.ship.modelId),'falcon9');
+    await page.evaluate(() => { crash('自动化验证'); game.tick(1750); });
+    await page.getByRole('heading',{name:'自由飞行 · 飞行结束'}).waitFor();
+    await page.getByRole('button',{name:'再飞一次'}).click();
+    await page.waitForFunction(() => game.state==='playing');
+    assert.deepEqual(await page.evaluate(() => [game.level,game.ship.modelId,game.lives]),[5,'falcon9',4]);
+    await page.locator('#gear').click();
+    await page.getByRole('button',{name:'返回本模式'}).click();
+    await page.locator('#freeSetupScreen').getByRole('button',{name:'返回玩法'}).click();
+    await page.getByRole('button',{name:/太阳系战役/}).click();
+    await page.getByRole('button',{name:'返回玩法'}).waitFor();
+    assert.deepEqual(await page.evaluate(() => [game.progress.unlocked,game.best,game.stats.landings,game.stats.crashes]),[1,1234,2,1]);
+    await page.getByRole('button',{name:'返回玩法'}).click();
+    await page.getByRole('button',{name:/太阳系战役/}).waitFor();
+    assert.deepEqual(errors,[]);
+  } finally { await page.close(); }
+
+  const [batch,batchErrors] = await open(browser,host,'/fix',568,320,true,instrument,true);
+  try {
+    const totals = await batch.evaluate(() => {
+      const check = (ok,message) => { if (!ok) throw Error(message); };
+      const campaign = () => JSON.stringify({
+        score,lives,runFresh,best,progress,stats,
+        storage:['vl_best','vl_progress','vl_stats','vl_cfg'].map(key => localStorage.getItem(key)),
+      });
+      gotoMap(); launch(0); game.tick(1210); crash('校验战役在途连续性'); gotoHome();
+      const initial = campaign();
+      let starts=0, landings=0, failures=0;
+      for (const mission of FREE_MISSIONS) {
+        for (const modelId of mission.models) {
+          check(startMission(mission,modelId),'start '+mission.levelIndex+' '+modelId);
+          check(game.mode==='free' && ship.modelId===modelId,'chosen model');
+          starts++;
+          game.tick(1210);
+          const target = game.P ? {cx:game.P.cx,y:game.P.cy-game.P.R} : game.padProbe().probes[0];
+          game.teleport(target.cx,target.y-9.1,0,55,0);
+          game.tick(25);
+          check(state==='crashed','hard collision '+mission.levelIndex);
+          game.tick(1800);
+          check(state==='freeResult' && !missionResult.landed && campaign()===initial,'failed flight isolation');
+          failures++;
+          retryFreeFlight(); game.tick(1210);
+          const soft = game.P ? {cx:game.P.cx,y:game.P.cy-game.P.R} : game.padProbe().probes[0];
+          game.teleport(soft.cx,soft.y-9.1,0,6,0);
+          game.tick(40);
+          check(state==='landed','assisted landing '+mission.levelIndex);
+          game.tick(1850);
+          check(state==='freeResult' && missionResult.landed && campaign()===initial,'successful flight isolation');
+          landings++;
+        }
+      }
+      gotoFreeSetup();
+      check(!startMission(FREE_MISSIONS[5],'starship') && state==='freeSetup','compatibility enforced at launch');
+      check(!startMission(RECOVERY_MISSIONS[0]) && state==='freeSetup','reserved challenge cannot launch');
+      return {starts,failures,landings};
+    });
+    assert.deepEqual(totals,{starts:29,failures:29,landings:29});
+    assert.deepEqual(batchErrors,[]);
+  } finally { await batch.close(); }
+  console.log(name+' modes: home/three menus, mobile rotation, 29 allowed free scene-model pairs, incompatible/reserved launch rejected, 29 crashes/retries and 29 assisted free landings isolate active campaign and storage PASS');
+}
 async function performanceSample(browser,name,host) {
   const values = [];
   for (const route of ['/release','/fix']) {
@@ -731,6 +825,7 @@ async function performanceSample(browser,name,host) {
         await compatibilityLink(browser,name,host);
         await regression(browser,name,host);
         await vehicleControls(browser,name,host);
+        await playModes(browser,name,host);
         if (name === 'chromium' || name === 'webkit') await performanceSample(browser,name,host);
       } finally { await browser.close(); }
     }
