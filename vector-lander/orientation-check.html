@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Spacer 屏幕方向检查</title>
+<style>
+  :root{color-scheme:dark;background:#050810;color:#e8f4ff;font:16px system-ui,sans-serif}
+  body{margin:0;padding:calc(16px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
+    calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left))}
+  #insets{position:fixed;visibility:hidden;padding:env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left)}
+  textarea{display:block;box-sizing:border-box;width:100%;max-width:54rem;margin:12px 0;font:13px monospace}
+  button{min-height:44px;padding:0 14px}
+</style>
+</head>
+<body>
+<div id="insets" aria-hidden="true"></div>
+<h1>屏幕方向检查</h1>
+<p>在 Safari 独立标签页打开。先竖屏，再横屏，等一秒后复制结果。</p>
+<textarea id="details" rows="10" aria-label="屏幕尺寸及事件" readonly></textarea>
+<button id="copy" type="button">复制结果</button> <span id="status" role="status"></span>
+<script>
+'use strict';
+const visual = window.visualViewport;
+const landscape = matchMedia('(orientation: landscape)');
+const field = document.getElementById('details');
+const entries = ['页面启动'];
+function dimensions() {
+  return 'window ' + innerWidth + '×' + innerHeight + ' · visible ' +
+    (visual ? Math.round(visual.width) + '×' + Math.round(visual.height) : 'unavailable');
+}
+function read() {
+  const safe = getComputedStyle(document.getElementById('insets'));
+  const orientation = screen.orientation;
+  return [
+    'Spacer · SPACER-SPRINT-09-HOTFIX-01',
+    'Browser: ' + navigator.userAgent,
+    'Context: ' + (window.top === window ? 'top-level' : 'embedded'),
+    dimensions(),
+    'screen: ' + screen.width + '×' + screen.height + ' · DPR ' + devicePixelRatio,
+    'orientation: ' + (orientation ? orientation.type + ' ' + orientation.angle + '°' : 'unavailable') +
+      ' · legacy angle ' + (window.orientation ?? 'unavailable'),
+    'matchMedia: ' + (landscape.matches ? 'landscape' : 'portrait'),
+    'safe area: ' + [safe.paddingTop, safe.paddingRight, safe.paddingBottom, safe.paddingLeft].join(' / '),
+    'Recent events:', ...entries,
+  ].join('\n');
+}
+function listen(target, event, label) {
+  if (!target) return;
+  const update = () => {
+    entries.unshift(Math.round(performance.now()) + 'ms ' + label + ' · ' + dimensions());
+    entries.length = Math.min(12, entries.length);
+    if (document.activeElement !== field) field.value = read();
+  };
+  if (target.addEventListener) target.addEventListener(event, update, {passive:true});
+  else if (event === 'change') target.addListener?.(update);
+}
+listen(window, 'resize', 'window.resize');
+listen(window, 'orientationchange', 'window.orientationchange');
+listen(window, 'pageshow', 'window.pageshow');
+listen(visual, 'resize', 'visualViewport.resize');
+listen(visual, 'scroll', 'visualViewport.scroll');
+listen(screen.orientation, 'change', 'screen.orientation.change');
+listen(landscape, 'change', 'matchMedia.orientation');
+field.addEventListener('blur', () => { field.value = read(); });
+field.value = read();
+document.getElementById('copy').addEventListener('click', async () => {
+  field.value = read();
+  const status = document.getElementById('status');
+  try {
+    await navigator.clipboard.writeText(field.value);
+    status.textContent = '已复制';
+  } catch {
+    field.focus();
+    field.select();
+    status.textContent = '请长按或使用系统复制';
+  }
+});
+</script>
+</body>
+</html>
