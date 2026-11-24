@@ -1320,6 +1320,34 @@ function drawTerrain(v) {
   ctx.restore();
   ridge();
   glowStroke(th.ridge, 1.6/v.z, 0.22);
+  // 连续的蓝色冰槽标出冰筏的滑行范围，金色甲板仍是唯一着陆目标。
+  if (levelDef.driftPads) {
+    ctx.strokeStyle = '#6baec7'; ctx.lineWidth = 2.4/v.z;
+    ctx.beginPath();
+    for (const p of pads) {
+      if (!p.moving) continue;
+      const left = Math.max(x0, p.cx - p.w/2 - p.amp);
+      const right = Math.min(x1, p.cx + p.w/2 + p.amp);
+      if (left >= right) continue;
+      ctx.moveTo(left, heightAt(left));
+      for (let x = left + wStep; x < right; x += wStep) ctx.lineTo(x, heightAt(x));
+      ctx.lineTo(right, heightAt(right));
+    }
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(107,174,199,.45)'; ctx.lineWidth = 1/v.z;
+    ctx.beginPath();
+    for (const p of pads) {
+      if (!p.moving) continue;
+      const left = Math.max(x0, p.cx - p.w/2 - p.amp);
+      const right = Math.min(x1, p.cx + p.w/2 + p.amp);
+      for (let x = Math.ceil(left/24)*24; x < right; x += 24) {
+        const y = heightAt(x);
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - 6/v.z, y + 7/v.z);
+      }
+    }
+    ctx.stroke();
+  }
   ctx.globalAlpha = 0.07;
   ctx.strokeStyle = th.ridge; ctx.lineWidth = 1/v.z;
   ctx.beginPath();
