@@ -2,52 +2,40 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#04060e">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>矢量着陆 · Vector Lander — 太阳系航线</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
 <style>
-  :root{--safe-b:env(safe-area-inset-bottom, 0px);--safe-l:env(safe-area-inset-left, 0px);--safe-r:env(safe-area-inset-right, 0px)}
+  :root{--safe-t:env(safe-area-inset-top, 0px);--safe-b:env(safe-area-inset-bottom, 0px);--safe-l:env(safe-area-inset-left, 0px);--safe-r:env(safe-area-inset-right, 0px)}
   html,body{margin:0;padding:0;height:100%;background:#04060e;overflow:hidden;
     overscroll-behavior:none;-webkit-tap-highlight-color:transparent;
     -webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
   body,body *{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
   #cv{position:fixed;left:0;top:0;display:block;width:100vw;height:100vh;cursor:crosshair;touch-action:none;
     -webkit-touch-callout:none;user-select:none}
-  .tbtn{position:fixed;bottom:calc(24px + env(safe-area-inset-bottom));width:76px;height:76px;border-radius:50%;
-    border:2px solid rgba(120,220,255,.78);background:rgba(8,20,38,.92);color:#bfe9ff;
-    box-shadow:0 0 18px rgba(70,180,255,.28),inset 0 0 14px rgba(70,180,255,.14);
-    text-align:center;display:none;align-items:center;justify-content:center;z-index:10;
-    -webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;
-    user-select:none;touch-action:none;transition:transform .08s,background .08s}
-  .tbtn::before{content:'';display:block;width:0;height:0;border-style:solid}
-  #btnL::before{border-width:12px 18px 12px 0;border-color:transparent #bfe9ff transparent transparent;margin-left:-3px}
-  #btnR::before{border-width:12px 0 12px 18px;border-color:transparent transparent transparent #bfe9ff;margin-right:-3px}
-  #btnT::before{border-width:0 14px 20px 14px;border-color:transparent transparent #ffc35e transparent;margin-top:-2px}
-  .tbtn.active{background:rgba(70,150,255,.6);transform:scale(.95)}
-  @media (pointer:coarse){ body.touch-play .tbtn{display:flex} }
-  body.panel-open .tbtn{display:none!important}
-  #btnL{left:calc(20px + env(safe-area-inset-left))}
-  #btnR{left:calc(112px + env(safe-area-inset-left))}
-  #btnT{right:calc(24px + env(safe-area-inset-right));bottom:calc(20px + env(safe-area-inset-bottom));
-    width:92px;height:92px;
-    border-color:rgba(255,180,90,.8);color:#ffc35e;
-    box-shadow:0 0 22px rgba(255,170,60,.28),inset 0 0 16px rgba(255,170,60,.14)}
-  #statsBtn{position:fixed;right:calc(16px + env(safe-area-inset-right));
-    top:calc(19vh + env(safe-area-inset-top));display:none;z-index:10;
-    padding:8px 12px;border-radius:16px;border:1px solid rgba(120,220,255,.65);
-    background:rgba(8,20,38,.82);color:#bfe9ff;line-height:0;
-    box-shadow:0 0 14px rgba(70,180,255,.2);cursor:pointer;
-    -webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;
-    -webkit-user-select:none;user-select:none;touch-action:none}
-  #statsBtn svg{width:18px;height:18px;fill:currentColor;display:block}
-  @media (pointer:coarse){
-    body.map-open.compact-map #statsBtn,
-    body.map-open.landscape-map #statsBtn{display:block}
-  }
-  body.panel-open #statsBtn{display:none!important}
+  #safeArea{position:fixed;visibility:hidden;pointer-events:none;
+    padding:var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l)}
+  .iconBtn{display:flex;align-items:center;justify-content:center;box-sizing:border-box;
+    width:44px;height:44px;padding:0;border-radius:50%;
+    border:1px solid rgba(120,220,255,.65);background:rgba(8,20,38,.92);color:#bfe9ff;
+    touch-action:none;cursor:pointer}
+  .iconBtn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;
+    stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+  .tbtn{position:fixed;bottom:calc(12px + var(--safe-b));width:clamp(48px,19vw,76px);
+    height:clamp(48px,19vw,76px);display:none;z-index:10}
+  .tbtn.active{background:#235892}
+  body.touch-ui.touch-play .tbtn{display:flex}
+  #btnL{left:calc(12px + var(--safe-l))}
+  #btnR{left:calc(20px + var(--safe-l) + clamp(48px,19vw,76px))}
+  #btnT{right:calc(12px + var(--safe-r));width:clamp(54px,22vw,88px);
+    height:clamp(54px,22vw,88px);color:#ffc35e;border-color:#ffc35e}
+  #statsBtn,#pauseBtn{position:fixed;right:calc(12px + var(--safe-r));
+    top:calc(8px + var(--safe-t));display:none;z-index:10}
+  body.touch-ui.map-open #statsBtn,body.touch-ui.pause-open #pauseBtn{display:flex}
+  body.panel-open #statsBtn,body.panel-open #pauseBtn{display:none}
   #rotateHint{position:fixed;inset:0;z-index:60;display:none;flex-direction:column;
     align-items:center;justify-content:center;gap:12px;background:rgba(2,5,12,.97);
     color:#e8f4ff;text-align:center;padding:24px;
@@ -66,19 +54,14 @@
     border:1px solid rgba(120,220,255,.6);background:rgba(20,40,70,.6);
     color:#bfe9ff;font:13px 'Courier New','Microsoft YaHei',monospace;
     cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:none}
+  .rotBtn{min-height:44px}
+  @media (prefers-reduced-motion:reduce){.rotPhone{animation:none}}
   #rotateTry{border-color:#59ffc8;background:rgba(24,80,64,.6);color:#e8f4ff}
   #rotateSkip{font-size:12px;opacity:.8;padding:6px 14px}
-  #gear{position:fixed;left:calc(14px + env(safe-area-inset-left));top:calc(58px + env(safe-area-inset-top));
-    width:30px;height:30px;border-radius:50%;
-    border:1px solid rgba(120,220,255,.5);background:rgba(20,40,70,.5);color:#9df;
-    display:flex;align-items:center;justify-content:center;
-    cursor:pointer;z-index:11;
-    -webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;
-    -webkit-user-select:none;user-select:none;touch-action:none}
-  #gear svg{width:17px;height:17px;fill:none;stroke:#9df;stroke-width:1.6;stroke-linecap:round}
-  #panel{position:fixed;left:calc(14px + env(safe-area-inset-left));top:calc(96px + env(safe-area-inset-top));
-    width:min(300px, calc(100vw - 28px));box-sizing:border-box;
-    max-height:calc(100vh - 120px - env(safe-area-inset-top));
+  #gear{position:fixed;left:calc(12px + var(--safe-l));top:calc(8px + var(--safe-t));z-index:11}
+  #panel{position:fixed;left:calc(14px + env(safe-area-inset-left));top:calc(58px + var(--safe-t));
+    width:min(300px, calc(100vw - 28px - var(--safe-l) - var(--safe-r)));box-sizing:border-box;
+    max-height:calc(100% - 70px - var(--safe-t) - var(--safe-b));
     overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;
     background:rgba(8,14,28,.92);border:1px solid rgba(120,220,255,.4);
     border-radius:8px;padding:12px 14px;z-index:12;color:#bfe0ff;
@@ -92,28 +75,26 @@
   .crow input{accent-color:#56d9ff;width:16px;height:16px}
   #panelBtns{margin-top:10px;display:flex;gap:8px}
   #panelBtns button{flex:1;background:rgba(60,110,180,.4);border:1px solid rgba(120,220,255,.5);
-    color:#e8f4ff;padding:5px 0;cursor:pointer;border-radius:4px;
+    color:#e8f4ff;min-height:44px;padding:5px 0;cursor:pointer;border-radius:4px;
     font:12px 'Courier New','Microsoft YaHei',monospace}
   .skinRow{margin:10px 0 4px}
   .skinLab{color:#9db8d8;margin-bottom:5px}
   .skinBtns{display:flex;gap:6px}
   .skinBtn{flex:1;background:rgba(40,70,110,.45);border:1px solid rgba(120,220,255,.35);
-    color:#bfe0ff;padding:5px 0;cursor:pointer;border-radius:4px;
+    color:#bfe0ff;min-height:44px;padding:5px 0;cursor:pointer;border-radius:4px;
     font:12px 'Courier New','Microsoft YaHei',monospace}
   .skinBtn.active{background:rgba(70,150,255,.6);border-color:#59ffc8;color:#fff}
 </style>
 </head>
 <body>
 <canvas id="cv"></canvas>
-<div class="tbtn" id="btnL" aria-label="左转"></div>
-<div class="tbtn" id="btnR" aria-label="右转"></div>
-<div class="tbtn" id="btnT" aria-label="主引擎"></div>
-<div id="gear" title="参数设置 (G)" aria-label="参数设置">
-  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg>
-</div>
-<button id="statsBtn" aria-label="统计">
-  <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="13" width="3.2" height="7"/><rect x="10.4" y="8" width="3.2" height="12"/><rect x="16.8" y="4" width="3.2" height="16"/></svg>
-</button>
+<div id="safeArea" aria-hidden="true"></div>
+<button type="button" class="iconBtn tbtn" id="btnL" aria-label="左转"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h12a4 4 0 0 1 0 8h-4M9 7l-5 5 5 5"/></svg></button>
+<button type="button" class="iconBtn tbtn" id="btnR" aria-label="右转"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12H8a4 4 0 0 0 0 8h4M15 7l5 5-5 5"/></svg></button>
+<button type="button" class="iconBtn tbtn" id="btnT" aria-label="主引擎"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l7-7 7 7M5 19l7-7 7 7"/></svg></button>
+<button type="button" class="iconBtn" id="gear" aria-label="参数设置"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1 3 3 1v3l2 2-2 2v3l-3 1-1 3H9l-1-3-3-1v-3l-2-2 2-2V7l3-1zM15 12a3 3 0 1 0-6 0 3 3 0 0 0 6 0"/></svg></button>
+<button type="button" class="iconBtn" id="statsBtn" aria-label="航行统计"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M7 16v-5m5 5V7m5 9V4"/></svg></button>
+<button type="button" class="iconBtn" id="pauseBtn" aria-label="暂停"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14M15 5v14"/></svg></button>
 <div id="rotateHint">
   <div class="rotPhone"></div>
   <div class="rotTitle">请横屏游玩</div>
@@ -122,7 +103,7 @@
   <button id="rotateSkip" class="rotBtn">竖屏也可</button>
 </div>
 <div id="panel" hidden>
-  <div id="panelTitle">⚙ 参数设置 · 实时生效</div>
+  <div id="panelTitle">参数设置</div>
   <div id="panelRows"></div>
   <div id="panelBtns">
     <button id="btnReset">恢复默认</button>
@@ -324,7 +305,7 @@ const LEVELS = [
 /* ---------- 画布 ---------- */
 const cvs = document.getElementById('cv');
 const ctx = cvs.getContext('2d');
-let W = 0, H = 0, DPR = 1, vig = null, safeBottom = 0, safeLeft = 0, safeRight = 0;
+let W = 0, H = 0, DPR = 1, vig = null, safeTop = 0, safeBottom = 0, safeLeft = 0, safeRight = 0;
 let stars = [];
 
 function genStars() {
@@ -342,9 +323,12 @@ function genStars() {
 function resize() {
   DPR = Math.min(2, window.devicePixelRatio || 1);
   W = window.innerWidth; H = window.innerHeight;
-  safeBottom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-b')) || 0;
-  safeLeft = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-l')) || 0;
-  safeRight = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-r')) || 0;
+  const insets = getComputedStyle(document.getElementById('safeArea'));
+  safeTop = parseFloat(insets.paddingTop);
+  safeBottom = parseFloat(insets.paddingBottom);
+  safeLeft = parseFloat(insets.paddingLeft);
+  safeRight = parseFloat(insets.paddingRight);
+  document.body.classList.toggle('touch-ui', touchUI());
   cvs.width = Math.round(W * DPR); cvs.height = Math.round(H * DPR);
   cvs.style.width = W + 'px'; cvs.style.height = H + 'px';
   const g = ctx.createRadialGradient(W/2, H/2, Math.min(W,H)*0.35, W/2, H/2, Math.max(W,H)*0.75);
@@ -355,24 +339,27 @@ function resize() {
 }
 let resizeTimer = 0;
 window.addEventListener('resize', () => scheduleResize(80));
-window.addEventListener('orientationchange', () => scheduleResize(350));
+window.addEventListener('orientationchange', () => { releaseAllKeys(); scheduleResize(350); });
 function scheduleResize(delay) {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => { resize(); syncOrientationHint(); }, delay);
+  resizeTimer = setTimeout(resize, delay);
 }
 function showLandscapeHelp() {
   document.body.classList.remove('portrait-ok');
   syncOrientationHint();
   const sub = document.getElementById('rotSub');
-  if (sub) sub.textContent = '请关闭 iPhone 竖屏锁定，把手机横过来';
+  if (sub) sub.textContent = '请关闭系统竖屏锁定，再把手机横过来';
+}
+function touchUI() {
+  return matchMedia('(pointer:coarse)').matches;
 }
 function syncOrientationHint() {
-  const coarse = !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
+  const coarse = touchUI();
   const portrait = window.innerHeight > window.innerWidth;
   const show = coarse && portrait && !document.body.classList.contains('portrait-ok');
   document.body.classList.toggle('rotate-hint', show);
   if (show && state !== 'title' && state !== 'map' && !paused) {
-    paused = true; rotatePaused = true;
+    releaseAllKeys(); paused = true; rotatePaused = true;
   } else if (!show && rotatePaused) {
     rotatePaused = false;
     if (!panelOpen) paused = false;
@@ -727,7 +714,8 @@ function launch(i) {
   sfxBeep(440, 0.1, 'square', 0.12, 660);
 }
 function gotoMap() {
-  state = 'map'; mapStatsOpen = false;
+  state = 'map'; mapStatsOpen = false; touchSelection = null;
+  if (!panelOpen && !rotatePaused) paused = false;
   mapSel = clamp(progress.unlocked, 0, NLV - 1);
   setAmbience(null); releaseAllKeys(); banner = null;
 }
@@ -1918,16 +1906,17 @@ function drawMiniShip(x, y, s, on) {
 function drawHUD() {
   if (state === 'title' || state === 'map') return;
   // 触屏设备：触控按钮占据底部，燃料与速度信息整体上移，避免与按钮重叠
-  const coarse = !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
-  const touchUI = coarse || (navigator.maxTouchPoints > 0 && W < 1000);
-  const compactHUD = touchUI && H > W;
+  const touch = touchUI();
+  const compactHUD = touch && H > W;
   const narrowHUD = W < 700;
-  const hudLift = touchUI ? (compactHUD ? 92 : 104) + safeBottom : 0;
-  hudText('SCORE ' + String(score).padStart(6, '0'), 18 + safeLeft, 14, 15, '#e8f4ff');
-  hudText('STATION ' + (levelIdx+1) + '/' + NLV + ' · ' + stationTitle(levelDef), 18 + safeLeft, 36, 12, '#7fb0d8');
-  for (let i = 0, lx = W - 46 - S.lives*26 - safeRight; i < S.lives; i++)
-    drawMiniShip(lx + i*26, 26, 1.5, i < lives);
-  hudText(muted ? '♪×' : '♪', W - 26 - safeRight, 14, 15, muted ? '#556' : '#7fb0d8', 'right');
+  const hudLift = safeBottom + (touch ? clamp(W*0.22, 54, 88) + 20 : 0);
+  const hudX = 18 + safeLeft, hudR = W - 18 - safeRight;
+  const headY = safeTop + 56;
+  hudText('SCORE ' + String(score).padStart(6, '0'), W/2, safeTop + 16, 15, '#e8f4ff', 'center');
+  hudText('STATION ' + (levelIdx+1) + '/' + NLV + ' · ' + stationTitle(levelDef), hudX, headY, 12, '#7fb0d8');
+  hudText('×' + lives, hudR, headY, 13, '#9df', 'right');
+  drawMiniShip(hudR - 24, headY + 7, 1.25, lives > 0);
+  if (muted) hudText('静音', W/2, safeTop + 35, 10, '#7fb0d8', 'center');
 
   const fw = compactHUD ? 132 : 170;
   const fh = compactHUD ? 8 : 12;
@@ -1962,7 +1951,7 @@ function drawHUD() {
     ctx.globalAlpha = 0.85;
     const label = '风 WIND' + (gale ? ' · 风暴!' : building ? ' · 风暴接近' : '');
     if (narrowHUD) {
-      const wx = 18 + safeLeft, wy = 58;
+      const wx = hudX, wy = headY + 20;
       hudText(label, wx, wy, 11, wcol);
       const ax = wx + ctx.measureText(label).width + 12;
       ctx.fillStyle = wcol;
@@ -1972,12 +1961,12 @@ function drawHUD() {
       hudText(Math.abs(w).toFixed(0), ax + 10, wy - 1, 12, wcol);
     } else {
       const cx = W/2;
-      hudText(label, cx - 30, 14, 12, wcol, 'right');
+      hudText(label, cx - 30, headY + 20, 12, wcol, 'right');
       ctx.fillStyle = wcol;
       ctx.beginPath();
-      ctx.moveTo(cx - 6 + dir*10, 20); ctx.lineTo(cx - 2 - dir*4, 14);
-      ctx.lineTo(cx - 2 - dir*4, 26); ctx.closePath(); ctx.fill();
-      hudText(Math.abs(w).toFixed(0), cx + 4, 14, 13, wcol);
+      ctx.moveTo(cx - 6 + dir*10, headY + 26); ctx.lineTo(cx - 2 - dir*4, headY + 20);
+      ctx.lineTo(cx - 2 - dir*4, headY + 32); ctx.closePath(); ctx.fill();
+      hudText(Math.abs(w).toFixed(0), cx + 4, headY + 20, 13, wcol);
     }
     ctx.globalAlpha = 1;
   }
@@ -1985,21 +1974,21 @@ function drawHUD() {
     const ds = levelDef.duststorm;
     const c = mod(time + ds.phase0, ds.period);
     if (c >= ds.calm + ds.warn)
-      hudText('沙尘暴 SANDSTORM', W/2, 88, 15, Math.sin(time*8) > 0 ? '#ff8a5a' : '#7a3a1c', 'center');
+      hudText('沙尘暴 SANDSTORM', W/2, headY + 40, 15, Math.sin(time*8) > 0 ? '#ff8a5a' : '#7a3a1c', 'center');
     else if (c >= ds.calm)
-      hudText('沙尘暴预警 SANDSTORM INCOMING', W/2, 88, 13, '#ffb347', 'center');
+      hudText('沙尘暴预警 SANDSTORM INCOMING', W/2, headY + 40, 13, '#ffb347', 'center');
   }
   if (levelDef.drag) {
     if (narrowHUD)
-      hudText('ATM 大气', W-18-safeRight, 56, 10, '#9db8d8', 'right');
+      hudText('ATM 大气', hudR, headY + 20, 10, '#9db8d8', 'right');
     else
-      hudText('ATM 大气', W/2, 36, 11, '#9db8d8', 'center');
+      hudText('ATM 大气', hudR, headY + 20, 11, '#9db8d8', 'center');
   }
 
   if (ship.fuel <= 0 && state === 'playing')
-    hudText('NO FUEL 燃料耗尽', W/2, 66, 15, Math.sin(time*7)>0 ? '#ff4d4d' : '#701c1c', 'center');
+    hudText('NO FUEL 燃料耗尽', W/2, headY + 58, 15, Math.sin(time*7)>0 ? '#ff4d4d' : '#701c1c', 'center');
   else if (ship.fuel < 22 && state === 'playing')
-    hudText('LOW FUEL 低燃料', W/2, 66, 14, Math.sin(time*6)>0 ? '#ffb347' : '#6b4a10', 'center');
+    hudText('LOW FUEL 低燃料', W/2, headY + 58, 14, Math.sin(time*6)>0 ? '#ffb347' : '#6b4a10', 'center');
 
   if (state === 'playing') {                         // 屏幕外平台方向箭头
     let bestP = null, bd = 1e9;
@@ -2034,16 +2023,12 @@ function drawBanner() {
   if (!banner) return;
   const a = Math.min(1, (banner.max - banner.life)*5, banner.life*2);
   ctx.globalAlpha = clamp(a, 0, 1);
-  ctx.fillStyle = banner.color;
-  ctx.font = "bold 30px 'Courier New',monospace";
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+
   ctx.shadowColor = banner.color; ctx.shadowBlur = 16;
-  ctx.fillText(banner.l1, W/2, H*0.30);
+  centerText(banner.l1, H*0.43, 30, banner.color, true);
   ctx.shadowBlur = 0;
   if (banner.l2) {
-    ctx.font = "14px 'Courier New',monospace";
-    ctx.fillStyle = '#9db8d8';
-    ctx.fillText(banner.l2, W/2, H*0.30 + 34);
+    centerText(banner.l2, H*0.43 + 34, 14, '#9db8d8');
   }
   ctx.globalAlpha = 1;
 }
@@ -2051,12 +2036,17 @@ function centerText(txt, y, size, color, bold) {
   ctx.fillStyle = color;
   ctx.font = `${bold?'bold ':''}${size}px 'Courier New','Microsoft YaHei',monospace`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const width = W - 24 - 2*Math.max(safeLeft, safeRight);
+  const measured = ctx.measureText(txt).width;
+  if (measured > width) ctx.font = ctx.font.replace(size + 'px', Math.floor(size*width/measured) + 'px');
   ctx.fillText(txt, W/2, y);
 }
-function leftText(txt, x, y, size, color, bold) {
+function leftText(txt, x, y, size, color, bold, width) {
   ctx.fillStyle = color;
   ctx.font = `${bold?'bold ':''}${size}px 'Courier New','Microsoft YaHei',monospace`;
   ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  const measured = ctx.measureText(txt).width;
+  if (measured > width) ctx.font = ctx.font.replace(size + 'px', Math.floor(size*width/measured) + 'px');
   ctx.fillText(txt, x, y);
 }
 function drawOverlays() {
@@ -2077,20 +2067,20 @@ function drawOverlays() {
   if (paused && state === 'playing') {
     dim(0.55);
     centerText('已暂停 PAUSED', H*0.45, 30, '#e8f4ff', true);
-    centerText('按 P 继续', H*0.55, 14, '#7fb0d8');
+    centerText(touchUI() ? '点击继续' : '按 P 继续', H*0.55, 14, '#7fb0d8');
   }
   if (state === 'gameover') {
     dim(0.6);
     centerText('GAME OVER', H*0.36, 40, '#ff6b5e', true);
     centerText('本次航行 ' + score + ' · 最佳 ' + best, H*0.48, 16, '#e8f4ff');
-    centerText('按任意键返回航线图', H*0.58, 14, '#7fb0d8');
+    centerText(touchUI() ? '点击返回航线图' : '按任意键返回航线图', H*0.58, 14, '#7fb0d8');
   }
   if (state === 'title') drawTitle();
 }
 function drawTitle() {
   ctx.fillStyle = 'rgba(3,6,14,0.35)'; ctx.fillRect(0, 0, W, H);
-  const touchUI = W < 560 || !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
-  const L = touchUI ? [
+  const touch = touchUI();
+  const L = touch ? [
     '◀ ▶ 旋转机头    ▲ 主引擎',
     '按住 ▲ 持续推力 · 松开继续滑行',
     '目标：慢速、直立，落在发光平台上',
@@ -2103,25 +2093,26 @@ function drawTitle() {
   ];
   // 手机横屏：左右双栏，避免竖排文字在矮屏上互相重叠
   if (W > H * 1.2 && H < 560) {
-    const lx = W * 0.06, rx = W * 0.54;
+    const lx = Math.max(W*0.06, safeLeft + 12), rx = W*0.54;
+    const leftWidth = W*0.49 - lx, rightWidth = W - safeRight - 12 - rx;
     // 右栏暗色底板，避免说明文字与背景天体叠在一起
     ctx.fillStyle = 'rgba(3,6,14,.56)';
     ctx.fillRect(W*0.51, H*0.06, W*0.47, H*0.60);
     ctx.shadowColor = '#56d9ff'; ctx.shadowBlur = 26;
-    leftText('VECTOR LANDER', lx, H*0.26, Math.min(44, W*0.052), '#e8f4ff', true);
+    leftText('VECTOR LANDER', lx, H*0.26, Math.min(44, W*0.052), '#e8f4ff', true, leftWidth);
     ctx.shadowBlur = 0;
-    leftText('矢 量 着 陆 · 太 阳 系 航 线', lx, H*0.40, 17, '#56d9ff');
-    leftText('向 Spacewar! · Lunar Lander · Asteroids 致敬', lx, H*0.49, 10, '#7fb0d8');
+    leftText('矢 量 着 陆 · 太 阳 系 航 线', lx, H*0.40, 17, '#56d9ff', false, leftWidth);
+    leftText('向 Spacewar! · Lunar Lander · Asteroids 致敬', lx, H*0.49, 9, '#7fb0d8', false, leftWidth);
     ctx.strokeStyle = 'rgba(120,220,255,.18)'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(W*0.50, H*0.14); ctx.lineTo(W*0.50, H*0.62); ctx.stroke();
     const startY = H*0.17, lh = W < 700 ? 20 : 22, rSize = W < 700 ? 11 : 12;
-    L.forEach((t, i) => leftText(t, rx, startY + i*lh, rSize, i < 2 ? '#9db8d8' : '#ffd75e'));
+    L.forEach((t, i) => leftText(t, rx, startY + i*lh, rSize, i < 2 ? '#9db8d8' : '#ffd75e', false, rightWidth));
     let y = startY + 4*lh + 10;
     if (best > 0) { leftText('最佳航行 ' + best, rx, y, 13, '#7dffb0'); y += 24; }
     if (Math.sin(time*3.2) > -0.25)
-      leftText(touchUI ? '— 点击屏幕 进入航线图 —' : '— 按任意键 / 点击屏幕 进入航线图 —',
-               rx, y + 12, W < 700 ? 15 : 16, '#e8f4ff', true);
-    centerText('纯 Canvas 手写牛顿力学 · 零依赖 · 支持触屏', H*0.93, 10, '#556a88');
+      leftText(touch ? '— 点击屏幕 进入航线图 —' : '— 按任意键 / 点击屏幕 进入航线图 —',
+               rx, y + 12, W < 700 ? 15 : 16, '#e8f4ff', true, rightWidth);
+    centerText('纯 Canvas 手写牛顿力学 · 零依赖 · 支持触屏', Math.min(H*0.93, H-safeBottom-8), 10, '#556a88');
     return;
   }
   ctx.shadowColor = '#56d9ff'; ctx.shadowBlur = 26;
@@ -2129,25 +2120,27 @@ function drawTitle() {
   ctx.shadowBlur = 0;
   centerText('矢 量 着 陆 · 太 阳 系 航 线', H*0.24 + Math.min(52, W*0.075), 22, '#56d9ff');
   centerText('向 Spacewar! · Lunar Lander · Asteroids 致敬', H*0.38, 13, '#7fb0d8');
-  L.forEach((t, i) => centerText(t, H*0.48 + i*24, touchUI ? 13 : 14, i < 2 ? '#9db8d8' : '#ffd75e'));
-  if (best > 0) centerText('最佳航行 ' + best, H*0.64, 14, '#7dffb0');
+  L.forEach((t, i) => centerText(t, H*0.48 + i*24, touch ? 13 : 14, i < 2 ? '#9db8d8' : '#ffd75e'));
+  if (best > 0) centerText('最佳航行 ' + best, Math.max(H*0.64, H*0.48 + 94), 14, '#7dffb0');
   if (Math.sin(time*3.2) > -0.25)
-    centerText(touchUI ? '— 点击屏幕 进入航线图 —' : '— 按任意键 / 点击屏幕 进入航线图 —',
-               H*0.72, 18, '#e8f4ff', true);
-  centerText('纯 Canvas 手写牛顿力学 · 零依赖 · 支持触屏', H*0.92, 12, '#556a88');
+    centerText(touch ? '— 点击屏幕 进入航线图 —' : '— 按任意键 / 点击屏幕 进入航线图 —',
+               Math.max(H*0.72, H*0.48 + 121), 18, '#e8f4ff', true);
+  centerText('纯 Canvas 手写牛顿力学 · 零依赖 · 支持触屏', Math.min(H*0.92, H-safeBottom-12), 12, '#556a88');
 }
 
 /* ---------- 航线图 ---------- */
 function isCompactMap() { return W < 560; }
 function isLandscapeMap() { return W >= 560 && W > H && H < 560; }
+function mapRowHeight() { return (H-safeTop-safeBottom)*0.56/9; }
 function mapNodePos(i) {
   if (isCompactMap()) {
-    const top = H * 0.255, rowH = H * 0.56 / 9;
-    return { x: W * 0.16, y: top + i * rowH };
+    const top = safeTop + (H-safeTop-safeBottom)*0.255, rowH = mapRowHeight();
+    return { x: safeLeft + (W-safeLeft-safeRight)*0.16, y: top + i * rowH };
   }
   if (isLandscapeMap()) {
     const col = i % 5, row = Math.floor(i / 5);
-    return { x: W * (0.10 + 0.80 * col / 4), y: H * (0.38 + row * 0.28) };
+    return { x: safeLeft + (W-safeLeft-safeRight)*(0.10 + 0.20*col),
+             y: safeTop + (H-safeTop-safeBottom)*(0.38 + row*0.28) };
   }
   return { x: W * (0.085 + 0.83 * i / (NLV - 1)),
            y: H * 0.55 + Math.sin(i * 0.85 + 1.2) * H * 0.10 };
@@ -2212,15 +2205,16 @@ function drawMap() {
 
   // 手机竖屏：纵向列表，避免 10 个节点挤在一行
   if (isCompactMap()) {
-    centerText('太 阳 系 航 线 · SOLAR TOUR', H*0.085, 20, '#e8f4ff', true);
-    centerText('本次航行 ' + score + ' · 最佳 ' + best + ' · 飞船 ×' + shownLives, H*0.145, 12, '#9db8d8');
+    centerText('太 阳 系 航 线 · SOLAR TOUR', Math.max(H*0.085, safeTop + 31), 17, '#e8f4ff', true);
+    centerText('本次航行 ' + score + ' · 最佳 ' + best + ' · 飞船 ×' + shownLives, Math.max(H*0.145, safeTop + 60), 12, '#9db8d8');
     if (allDone) {
       const a = 0.6 + 0.4*Math.sin(time*3);
       ctx.globalAlpha = a;
-      centerText('★ 太阳系征服完成 ★', H*0.205, 15, '#ffd75e', true);
+      centerText('★ 太阳系征服完成 ★', Math.max(H*0.205, safeTop + 80), 15, '#ffd75e', true);
       ctx.globalAlpha = 1;
     }
-    const top = H*0.255, rowH = H*0.56/9, iconX = W*0.16, textX = W*0.28;
+    const {x:iconX, y:top} = mapNodePos(0);
+    const rowH = mapRowHeight(), textX = iconX + 36;
     ctx.setLineDash([4, 7]); ctx.strokeStyle = '#3a5a7a'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(iconX, top); ctx.lineTo(iconX, top + rowH*9); ctx.stroke();
     ctx.setLineDash([]);
@@ -2229,9 +2223,9 @@ function drawMap() {
       const unlocked = i <= progress.unlocked || S.unlockAll;
       if (i === mapSel) {
         ctx.fillStyle = 'rgba(89,255,200,.07)';
-        ctx.fillRect(10, p.y - rowH/2 + 2, W - 20, rowH - 4);
+        ctx.fillRect(10 + safeLeft, p.y - rowH/2 + 2, W - 20 - safeLeft - safeRight, rowH - 4);
         ctx.strokeStyle = '#59ffc8'; ctx.lineWidth = 1.2;
-        ctx.strokeRect(10, p.y - rowH/2 + 2, W - 20, rowH - 4);
+        ctx.strokeRect(10 + safeLeft, p.y - rowH/2 + 2, W - 20 - safeLeft - safeRight, rowH - 4);
       }
       drawBodyIcon(p.x, p.y, i, unlocked);
       ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
@@ -2241,7 +2235,7 @@ function drawMap() {
       ctx.textAlign = 'right';
       ctx.fillStyle = unlocked ? '#7fb0d8' : '#44526a';
       ctx.font = "10px 'Courier New',monospace";
-      ctx.fillText('D' + LEVELS[i].D, W - 18, p.y - 9);
+      ctx.fillText('D' + LEVELS[i].D, W - 18 - safeRight, p.y - 9);
       const st = progress.stars[i];
       ctx.textAlign = 'left';
       ctx.fillStyle = st > 0 ? '#ffd75e' : '#44526a';
@@ -2249,8 +2243,8 @@ function drawMap() {
       ctx.fillText(st > 0 ? '★'.repeat(st) + '☆'.repeat(3 - st) : '☆☆☆', textX, p.y + 11);
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     }
-    centerText('点站点选择 · 再点一次出发', H*0.935, 13, '#7fb0d8');
-    centerText('⚙ 设置 · 右上角统计查看战绩', H*0.968, 11, '#556a88');
+    centerText('点站点选择 · 再点一次出发', Math.min(H*0.935, H-safeBottom-26), 13, '#7fb0d8');
+    centerText('左上角设置 · 右上角统计', Math.min(H*0.968, H-safeBottom-8), 11, '#556a88');
     if (mapStatsOpen) drawMapStats();
     return;
   }
@@ -2311,12 +2305,12 @@ function drawMap() {
 function drawMapLandscape() {
   const allDone = progress.stars.every(s => s >= 1);
   const shownLives = runFresh ? S.lives : lives;
-  centerText('太 阳 系 航 线 · SOLAR TOUR', H*0.10, 22, '#e8f4ff', true);
-  centerText('本次航行 ' + score + ' · 最佳 ' + best + ' · 飞船 ×' + shownLives, H*0.17, 12, '#9db8d8');
+  centerText('太 阳 系 航 线 · SOLAR TOUR', Math.max(H*0.10, safeTop + 27), 22, '#e8f4ff', true);
+  centerText('本次航行 ' + score + ' · 最佳 ' + best + ' · 飞船 ×' + shownLives, Math.max(H*0.17, safeTop + 50), 12, '#9db8d8');
   if (allDone) {
     const a = 0.6 + 0.4*Math.sin(time*3);
     ctx.globalAlpha = a;
-    centerText('★ 太阳系征服完成 ★', H*0.235, 15, '#ffd75e', true);
+    centerText('★ 太阳系征服完成 ★', Math.max(H*0.235, safeTop + 67), 15, '#ffd75e', true);
     ctx.globalAlpha = 1;
   }
   // 两段航线 + 行间连接
@@ -2347,22 +2341,22 @@ function drawMapLandscape() {
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     ctx.fillStyle = unlocked ? '#e8f4ff' : '#556a88';
     ctx.font = "12px 'Courier New','Microsoft YaHei',monospace";
-    ctx.fillText(LEVELS[i].body, p.x, p.y + 22);
+    ctx.fillText(LEVELS[i].body, p.x, p.y + 19);
     ctx.fillStyle = unlocked ? '#7fb0d8' : '#44526a';
     ctx.font = "10px 'Courier New','Microsoft YaHei',monospace";
-    ctx.fillText((i+1) + '·' + LEVELS[i].name.split(' · ')[0], p.x, p.y + 37);
+    ctx.fillText((i+1) + '·' + LEVELS[i].name.split(' · ')[0], p.x, p.y + 33);
     const st = progress.stars[i];
     ctx.fillStyle = st > 0 ? '#ffd75e' : '#44526a';
     ctx.font = "13px 'Courier New',monospace";
-    ctx.fillText(st > 0 ? '★'.repeat(st) + '☆'.repeat(3 - st) : '☆☆☆', p.x, p.y + 51);
+    ctx.fillText(st > 0 ? '★'.repeat(st) + '☆'.repeat(3 - st) : '☆☆☆', p.x, p.y + 46);
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   }
-  centerText('点站点选择 · 再点一次出发 · 右上角统计', H*0.94, 13, '#7fb0d8');
+  centerText('点站点选择 · 再点一次出发 · 右上角统计', Math.min(H*0.94, H-safeBottom-10), 13, '#7fb0d8');
 }
 function drawMapStats() {
   ctx.fillStyle = 'rgba(3,6,14,0.5)'; ctx.fillRect(0, 0, W, H);
   const px = W/2, py = H/2;
-  const pw = Math.min(340, W - 24);
+  const pw = Math.min(340, W - 24 - safeLeft - safeRight);
   ctx.fillStyle = 'rgba(8,14,28,.95)';
   ctx.fillRect(px-pw/2, py-110, pw, 220);
   ctx.strokeStyle = 'rgba(120,220,255,.4)'; ctx.lineWidth = 1;
@@ -2373,21 +2367,21 @@ function drawMapStats() {
   centerText('完美着陆（三星）' + stats.perfects, py+20, 15, '#7dffb0');
   centerText('最佳航行 ' + best, py+50, 15, '#ffd75e');
   const touch = !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
-  centerText(touch ? '点击空白处关闭' : '按 S 关闭', py+86, 12, '#7fb0d8');
+  centerText(touch ? '点击关闭' : '按 S 关闭', py+86, 12, '#7fb0d8');
 }
 function mapHitTest(x, y) {
   if (isCompactMap()) {
-    if (x < 10 || x > W - 10) return null;
-    const top = H*0.255, rowH = H*0.56/9;
+    if (x < 10 + safeLeft || x > W - 10 - safeRight) return null;
+    const top = mapNodePos(0).y, rowH = mapRowHeight();
     for (let i = 0; i < NLV; i++)
       if (Math.abs(y - (top + i*rowH)) <= rowH/2) return i;
     return null;
   }
   if (isLandscapeMap()) {
-    const cellW = W * 0.20;
+    const cellW = (W-safeLeft-safeRight)*0.20;
     for (let i = 0; i < NLV; i++) {
       const p = mapNodePos(i);
-      if (Math.abs(x - p.x) < cellW*0.48 && y > p.y - 26 && y < p.y + 66) return i;
+      if (Math.abs(x - p.x) < cellW*0.48 && y >= p.y - 22 && y < p.y + (H-safeTop-safeBottom)*0.28 - 22) return i;
     }
     return null;
   }
@@ -2424,7 +2418,7 @@ const PANEL_SKINS = [
   { key:'falcon9',  name:'猎鹰 9' },
   { key:'starship', name:'星舰' },
 ];
-let panelOpen = false;
+let panelOpen = false, panelWasPaused = false;
 function refreshPanel() {
   for (const d of PANEL_ROWS) {
     d.inpEl.value = d.toSlider ? d.toSlider(S[d.key]) : S[d.key];
@@ -2495,28 +2489,33 @@ function togglePanel() {
   panelOpen = !panelOpen;
   document.getElementById('panel').hidden = !panelOpen;
   document.body.classList.toggle('panel-open', panelOpen);
-  if (panelOpen && state === 'playing') paused = true;
+  if (panelOpen) { panelWasPaused = paused && !rotatePaused; releaseAllKeys(); paused = true; }
   if (!panelOpen) {
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-    paused = false;
+    paused = panelWasPaused || rotatePaused;
   }
 }
-document.getElementById('gear').addEventListener('pointerdown', e => {
-  e.preventDefault(); audioInit(); togglePanel();
+document.getElementById('gear').addEventListener('click', () => {
+  audioInit(); togglePanel();
 });
-document.getElementById('statsBtn').addEventListener('pointerdown', e => {
-  e.preventDefault(); audioInit();
+document.getElementById('statsBtn').addEventListener('click', () => {
+  audioInit();
   if (state === 'map') mapStatsOpen = !mapStatsOpen;
 });
-document.getElementById('rotateSkip').addEventListener('pointerdown', e => {
-  e.preventDefault();
+document.getElementById('rotateSkip').addEventListener('click', () => {
   document.body.classList.add('portrait-ok');
   syncOrientationHint();
 });
-document.getElementById('rotateTry').addEventListener('pointerdown', e => {
-  e.preventDefault();
+document.getElementById('rotateTry').addEventListener('click', () => {
   showLandscapeHelp();
 });
+const pauseBtn = document.getElementById('pauseBtn');
+function togglePause() {
+  if (state !== 'playing' || panelOpen || rotatePaused) return;
+  paused = !paused;
+  if (paused) releaseAllKeys();
+}
+pauseBtn.addEventListener('click', togglePause);
 document.getElementById('btnClose').addEventListener('click', togglePanel);
 document.getElementById('btnReset').addEventListener('click', () => {
   S = { ...S_DEF }; saveCfg(); refreshPanel(); lives = S.lives;
@@ -2524,28 +2523,43 @@ document.getElementById('btnReset').addEventListener('click', () => {
 buildPanel();
 
 /* ---------- 输入 ---------- */
+const touchControls = [];
+const keyboard = new Set();
+const controlCodes = {left:['ArrowLeft','KeyA'], right:['ArrowRight','KeyD'], up:['ArrowUp','KeyW','Space']};
+function syncKeys() {
+  for (const control of touchControls)
+    keys[control.key] = control.pointers.size > 0 || controlCodes[control.key].some(code => keyboard.has(code));
+}
 function releaseAllKeys() {
+  keyboard.clear();
+  for (const {el, pointers} of touchControls) {
+    pointers.clear();
+    el.classList.remove('active');
+  }
   keys.left = false; keys.right = false; keys.up = false;
   setThrustSound(false); lastThrustSnd = false;
 }
 window.addEventListener('keydown', e => {
   audioInit();
   const c = e.code;
+  if (e.target instanceof HTMLButtonElement || e.target instanceof HTMLInputElement) {
+    if (c === 'Space' || c === 'Enter' || c.startsWith('Arrow')) return;
+  }
   if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(c)) e.preventDefault();
   if (c === 'KeyG') { togglePanel(); return; }
-  if (panelOpen) return;
+  if (panelOpen || document.body.classList.contains('rotate-hint')) return;
   if (c === 'KeyM') { muted = !muted; if (master) master.gain.value = muted ? 0 : 0.5; return; }
-  if (c === 'ArrowLeft'  || c === 'KeyA') keys.left  = true;
-  if (c === 'ArrowRight' || c === 'KeyD') keys.right = true;
-  if (c === 'ArrowUp'    || c === 'KeyW' || c === 'Space') keys.up = true;
   if (c === 'Escape') {
+    if (mapStatsOpen) { mapStatsOpen = false; return; }
     if (state === 'map') state = 'title';
     else if (state !== 'title') gotoMap();
     return;
   }
   if (state === 'map') {
-    if (mapStatsOpen && (c === 'Space' || c === 'Enter')) {
-      mapStatsOpen = false; keys.up = false; return;   // 统计面板优先：确认键只关面板
+    touchSelection = null;
+    if (mapStatsOpen) {
+      if (['Space','Enter','KeyS'].includes(c)) mapStatsOpen = false;
+      return;
     }
     if (c === 'ArrowLeft')  mapSel = clamp(mapSel - 1, 0, NLV - 1);
     else if (c === 'ArrowRight') mapSel = clamp(mapSel + 1, 0, NLV - 1);
@@ -2557,29 +2571,42 @@ window.addEventListener('keydown', e => {
   if (state === 'gameover'){ gotoMap(); return; }
   if (state === 'landed')  { gotoMap(); return; }
   if (state === 'playing') {
-    if (c === 'KeyP') {
-      paused = !paused;
-      if (paused) { setThrustSound(false); lastThrustSnd = false; }
-      return;
-    }
+    if (c === 'KeyP') { if (!e.repeat) togglePause(); return; }
+    if (paused) return;
+    if (Object.values(controlCodes).some(codes => codes.includes(c))) keyboard.add(c);
+    syncKeys();
     if (c === 'KeyR') { spawnShip(); announce('已重置本关位置', '', '#ffd75e', 1.2); }
   }
 });
 window.addEventListener('keyup', e => {
-  const c = e.code;
-  if (c === 'ArrowLeft'  || c === 'KeyA') keys.left  = false;
-  if (c === 'ArrowRight' || c === 'KeyD') keys.right = false;
-  if (c === 'ArrowUp'    || c === 'KeyW' || c === 'Space') keys.up = false;
+  keyboard.delete(e.code);
+  syncKeys();
 });
+let canvasTap = null, touchSelection = null;
 cvs.addEventListener('pointerdown', e => {
   e.preventDefault();
+  if (e.isPrimary && e.button === 0)
+    canvasTap = {id:e.pointerId, x:e.clientX, y:e.clientY, state, start:performance.now()};
+});
+cvs.addEventListener('pointercancel', () => { canvasTap = null; });
+cvs.addEventListener('pointerup', e => {
+  if (canvasTap?.id !== e.pointerId) return;
+  const tap = canvasTap; canvasTap = null;
+  if (panelOpen || tap.state !== state || performance.now() - tap.start > 600 ||
+      Math.hypot(e.clientX-tap.x, e.clientY-tap.y) > 12) return;
   audioInit();
+  if (state === 'playing' && paused) { togglePause(); return; }
   if (state === 'title') { gotoMap(); return; }
   if (state === 'map') {
     if (mapStatsOpen) { mapStatsOpen = false; return; }   // 统计面板：点击只关面板，不穿透到节点
     const hit = mapHitTest(e.clientX, e.clientY);
     if (hit === null) return;
-    if (hit === mapSel) launch(hit); else mapSel = hit;
+    if (hit === mapSel && (e.pointerType !== 'touch' || touchSelection === hit)) {
+      launch(hit);
+    } else {
+      mapSel = hit;
+      touchSelection = e.pointerType === 'touch' ? hit : null;
+    }
     return;
   }
   if (state === 'landed' || state === 'gameover') { gotoMap(); return; }
@@ -2591,18 +2618,22 @@ document.addEventListener('visibilitychange', () => {
 
 function bindTouch(id, key) {
   const el = document.getElementById(id);
-  const on  = e => { e.preventDefault(); audioInit();
-                     if (state === 'title') { gotoMap(); return; }
-                     if (state === 'map') {
-                       if (mapStatsOpen) { mapStatsOpen = false; return; }
-                       if (key === 'left')       mapSel = clamp(mapSel - 1, 0, NLV - 1);
-                       else if (key === 'right') mapSel = clamp(mapSel + 1, 0, NLV - 1);
-                       return;                    // 地图态只选择不出发；不写 keys 防残留
-                     }
-                     if (state === 'landed' || state === 'gameover') { gotoMap(); return; }
-                     keys[key] = true; el.classList.add('active');
-                     try { el.setPointerCapture(e.pointerId); } catch (_) {} };
-  const off = e => { e.preventDefault(); keys[key] = false; el.classList.remove('active'); };
+  const pointers = new Set();
+  touchControls.push({el, key, pointers});
+  const on = e => {
+    if (e.button !== 0 || state !== 'playing' || paused || panelOpen) return;
+    e.preventDefault();
+    audioInit();
+    pointers.add(e.pointerId);
+    syncKeys();
+    el.classList.add('active');
+    try { el.setPointerCapture(e.pointerId); } catch (_) {}
+  };
+  const off = e => {
+    pointers.delete(e.pointerId);
+    syncKeys();
+    el.classList.toggle('active', pointers.size > 0);
+  };
   el.addEventListener('pointerdown', on);
   el.addEventListener('pointerup', off);
   el.addEventListener('pointercancel', off);
@@ -2646,10 +2677,16 @@ function render() {
   }
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   // 触控按钮只在可操控的飞行状态出现；地图使用点选，不再混入方向/点火键
-  document.body.classList.toggle('touch-play', state === 'playing' && !paused && !panelOpen);
+  const playing = state === 'playing';
+  if (!playing && (keyboard.size || touchControls.some(({pointers}) => pointers.size))) releaseAllKeys();
+  document.body.classList.toggle('touch-play', playing && !paused && !panelOpen);
+  document.body.classList.toggle('pause-open', playing);
+  const pauseLabel = paused ? '继续' : '暂停';
+  if (pauseBtn.getAttribute('aria-label') !== pauseLabel) {
+    pauseBtn.setAttribute('aria-label', pauseLabel);
+    pauseBtn.querySelector('path').setAttribute('d', paused ? 'M9 5l10 7-10 7z' : 'M9 5v14M15 5v14');
+  }
   document.body.classList.toggle('map-open', state === 'map');
-  document.body.classList.toggle('compact-map', state === 'map' && isCompactMap());
-  document.body.classList.toggle('landscape-map', state === 'map' && isLandscapeMap());
   ctx.fillStyle = '#050810'; ctx.fillRect(0, 0, W, H);
   if (state === 'map') {
     drawStars();
