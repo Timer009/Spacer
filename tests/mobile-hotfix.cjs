@@ -9,7 +9,7 @@ const { chromium, webkit, firefox } = require(process.env.SPACER_TEST_PLAYWRIGHT
 const root = path.resolve(__dirname, '..');
 const evidence = process.env.SPACER_EVIDENCE_DIR || fs.mkdtempSync(path.join(os.tmpdir(), 'spacer-hotfix-'));
 const base = execFileSync('git', ['-C', root, 'show', 'a10a463:vector-lander/index.html']);
-const hotfix01 = execFileSync('git', ['-C', root, 'show', 'b97c0c5:vector-lander/index.html']);
+const hotfix02 = execFileSync('git', ['-C', root, 'show', '319d54a:vector-lander/index.html']);
 const html = fs.readFileSync(path.join(root, 'vector-lander/index.html'));
 const probe = fs.readFileSync(path.join(root, 'vector-lander/orientation-check.html'));
 const profiles = [
@@ -21,7 +21,7 @@ fs.mkdirSync(evidence, {recursive:true});
 function serve() {
   const server = http.createServer((req, res) => {
     const iframe = '<iframe id="embedded" src="/fix?debug=1" allow="fullscreen \'none\'" sandbox="allow-scripts allow-same-origin" style="display:block;width:320px;height:568px;border:0"></iframe>';
-    const body = {'/base':base, '/hotfix01':hotfix01, '/fix':html, '/orientation-check':probe, '/embedded':iframe}[new URL(req.url, 'http://localhost').pathname];
+    const body = {'/base':base, '/hotfix02':hotfix02, '/fix':html, '/orientation-check':probe, '/embedded':iframe}[new URL(req.url, 'http://localhost').pathname];
     if (!body) { res.writeHead(404); res.end(); return; }
     res.writeHead(200, {'Content-Type':'text/html; charset=utf-8', 'Cache-Control':'no-store'});
     res.end(body);
@@ -399,6 +399,43 @@ async function sizeVirtual(page,width,height) {
     return r.width===w && r.height===h && r.left===0 && r.top===0;
   }, [width,height]);
 }
+async function compatibilityLink(browser,name,host) {
+  const init = () => {
+    window.__fullscreenRequests = 0;
+    document.documentElement?.addEventListener('fullscreenchange', () => { window.__fullscreenRequests++; });
+    Element.prototype.requestFullscreen = async function() { window.__fullscreenRequests++; };
+  };
+  const [page,errors] = await open(browser,host,'/fix?compat=1&debug=1',390,844,false,init);
+  try {
+    await sizeVirtual(page,390,844);
+    assert.deepEqual(await page.evaluate(() => [coarseQuery.matches,virtualLandscape,W,H,__fullscreenRequests]),[false,true,844,390,0]);
+    await page.evaluate(() => { game.jump(0); });
+    await page.locator('#pauseBtn').click();
+    await page.waitForFunction(() => manualPaused);
+    const before = await page.evaluate(ship);
+    await page.locator('#gear').click();
+    await page.getByRole('button',{name:'退出兼容'}).click();
+    await size(page,390,844);
+    await page.locator('#btnClose').click();
+    assert.deepEqual(await page.evaluate(ship),before);
+    assert.equal(new URL(page.url()).search,'?debug=1');
+    await page.reload();
+    await page.waitForFunction(() => directionMode==='auto' && !virtualLandscape);
+    assert.deepEqual(errors,[]);
+  } finally { await page.close(); }
+  const [probePage,probeErrors] = await open(browser,host,'/orientation-check',390,844);
+  try {
+    await probePage.getByRole('button',{name:'记录竖放时'}).click();
+    await probePage.setViewportSize({width:844,height:390});
+    await probePage.waitForFunction(() => innerWidth===844 && innerHeight===390);
+    await probePage.getByRole('button',{name:'记录横放后'}).click();
+    const report = await probePage.locator('#details').inputValue();
+    assert.match(report,/竖放时记录\nwindow 390×844/);
+    assert.match(report,/横放后记录\nwindow 844×390/);
+    assert.deepEqual(probeErrors,[]);
+  } finally { await probePage.close(); }
+  console.log(name+' closeout: explicit URL without coarse pointer or fullscreen, exit preserves paused flight and cleans URL, paired diagnostic captures PASS');
+}
 async function containerAndNative(browser,name,host) {
   const [page,errors] = await open(browser,host,'/fix?debug=1',390,844);
   try {
@@ -460,7 +497,7 @@ async function containerAndNative(browser,name,host) {
 }
 async function regression(browser,name,host) {
   const comparison = [];
-  for (const route of ['/hotfix01','/fix']) {
+  for (const route of ['/hotfix02','/fix']) {
     const [page,errors] = await open(browser,host,route,568,320,true,instrument,true);
     try {
       const result = await page.evaluate(() => {
@@ -551,7 +588,7 @@ async function regression(browser,name,host) {
 }
 async function performanceSample(browser,name,host) {
   const values = [];
-  for (const route of ['/hotfix01','/fix']) {
+  for (const route of ['/hotfix02','/fix']) {
     const [page,errors] = await open(browser,host,route,844,390);
     try {
       await page.evaluate(() => { game.jump(9); __frames.times.length=0; });
@@ -596,6 +633,7 @@ async function performanceSample(browser,name,host) {
         }
         await containerAndNative(browser,name,host);
         await compatibleLandscape(browser,name,host);
+        await compatibilityLink(browser,name,host);
         await regression(browser,name,host);
         if (name === 'chromium' || name === 'webkit') await performanceSample(browser,name,host);
       } finally { await browser.close(); }

@@ -352,7 +352,8 @@ const visual = window.visualViewport;
 const landscapeQuery = matchMedia('(orientation: landscape)');
 const coarseQuery = matchMedia('(pointer: coarse)');
 const debugPanel = document.getElementById('viewportDebug');
-const debugEnabled = new URLSearchParams(location.search).get('debug') === '1';
+const launchParams = new URLSearchParams(location.search);
+const debugEnabled = launchParams.get('debug') === '1';
 const viewportEvents = [];
 let lastDebugUpdate = 0;
 let viewportDirty = true, viewportTimer = 0;
@@ -2715,12 +2716,21 @@ document.getElementById('rotateSkip').addEventListener('click', () => {
 const modeButtons = document.querySelectorAll('[data-direction]');
 const nativeButton = document.getElementById('nativeLandscape');
 function applyDirectionMode(mode) {
+  if (directionMode === 'compatible' && mode !== 'compatible') {
+    const url = new URL(location.href);
+    if (url.searchParams.get('compat') === '1') {
+      url.searchParams.delete('compat');
+      try { history.replaceState(history.state, '', url.href); }
+      catch (error) { recordViewportEvent('compat URL cleanup: ' + error.name); }
+    }
+  }
   directionMode = mode;
   wantsRotateHint = false;
   for (const button of modeButtons) {
     const active = button.dataset.direction === mode;
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
+    if (button.dataset.direction === 'auto') button.textContent = mode === 'compatible' ? '退出兼容' : '自动';
   }
   invalidateViewport('direction mode: ' + mode, true);
 }
@@ -2754,7 +2764,7 @@ async function exitNativeLandscape() {
 function selectDirectionMode(mode) {
   if (nativeBusy || ownsFullscreen || ownsOrientationLock) void exitNativeLandscape();
   applyDirectionMode(mode);
-  showDirectionStatus(mode === 'compatible' ? '请把手机横过来。退出时在设置中选择「自动」或「竖屏」。' : '');
+  showDirectionStatus(mode === 'compatible' ? '请把手机顶部朝左。退出时在这里选择「退出兼容」或「竖屏」。' : '');
 }
 async function requestNativeLandscape() {
   if (nativeBusy) return;
@@ -3080,7 +3090,7 @@ function viewportDebugText() {
   const orientation = screen.orientation;
   const standalone = matchMedia('(display-mode: standalone)').matches;
   return [
-    'Spacer · SPACER-SPRINT-09-HOTFIX-02',
+    'Spacer · Sprint 09 横屏验收版',
     'Git commit: ' + (commit || '当前 URL 未固定到提交'),
     'Browser: ' + navigator.userAgent,
     'Context: ' + (window.top === window ? 'top-level' : 'embedded') + (standalone ? ' · standalone' : ''),
@@ -3092,6 +3102,7 @@ function viewportDebugText() {
       (orientation ? orientation.type + ' ' + orientation.angle + '°' : 'unavailable') +
       ' · legacy angle: ' + (window.orientation ?? 'unavailable'),
     'matchMedia: ' + (landscapeQuery.matches ? 'landscape' : 'portrait'),
+    'Pointer: coarse ' + coarseQuery.matches + ' · touch points ' + navigator.maxTouchPoints,
     'Container: ' + hostW + '×' + hostH + ' · logical ' + W + '×' + H + ' · direction mode: ' + directionMode +
       (virtualLandscape ? ' · virtual 90°' : ''),
     'Canvas: ' + cvs.width + '×' + cvs.height + ' px · CSS ' + rect.width + '×' + rect.height + ' CSS px',
@@ -3146,6 +3157,7 @@ if (typeof ResizeObserver === 'function') {
   const observer = new ResizeObserver(() => invalidateViewport('ResizeObserver.container'));
   observer.observe(viewportHost);
 }
+if (launchParams.get('compat') === '1') selectDirectionMode('compatible');
 resize();
 loadLevel(0);
 ship.visible = false;   // 标题画面只展示地形

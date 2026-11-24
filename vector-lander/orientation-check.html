@@ -17,7 +17,9 @@
 <body>
 <div id="insets" aria-hidden="true"></div>
 <h1>屏幕方向检查</h1>
-<p>在 Safari 独立标签页打开。先竖屏，再横屏，等一秒后复制结果。</p>
+<p>在要测试的浏览器独立标签页打开。竖屏时记录一次，把手机横过来，等一秒后记录第二次，再复制结果。</p>
+<button type="button" data-capture="0">记录竖放时</button>
+<button type="button" data-capture="1">记录横放后</button>
 <textarea id="details" rows="10" aria-label="屏幕尺寸及事件" readonly></textarea>
 <button id="copy" type="button">复制结果</button> <span id="status" role="status"></span>
 <script>
@@ -26,30 +28,40 @@ const visual = window.visualViewport;
 const landscape = matchMedia('(orientation: landscape)');
 const field = document.getElementById('details');
 const entries = ['页面启动'];
+const captures = [null, null];
 function dimensions() {
   return 'window ' + innerWidth + '×' + innerHeight + ' · visible ' +
-    (visual ? Math.round(visual.width) + '×' + Math.round(visual.height) : 'unavailable');
+    (visual ? Math.round(visual.width) + '×' + Math.round(visual.height) + ' @ ' + Number(visual.scale).toFixed(3) : 'unavailable');
 }
-function read() {
+function measure() {
   const safe = getComputedStyle(document.getElementById('insets'));
   const orientation = screen.orientation;
   return [
-    'Spacer · SPACER-SPRINT-09-HOTFIX-02',
-    'Git commit: ' + (location.pathname.match(/(?:^|\/)([0-9a-f]{40})(?:\/|$)/i)?.[1] || '当前 URL 未固定到提交'),
-    'Browser: ' + navigator.userAgent,
-    'Context: ' + (window.top === window ? 'top-level' : 'embedded'),
     dimensions(),
     'document container: ' + document.documentElement.clientWidth + '×' + document.documentElement.clientHeight,
     'screen: ' + screen.width + '×' + screen.height + ' · DPR ' + devicePixelRatio,
     'orientation: ' + (orientation ? orientation.type + ' ' + orientation.angle + '°' : 'unavailable') +
       ' · legacy angle ' + (window.orientation ?? 'unavailable'),
     'matchMedia: ' + (landscape.matches ? 'landscape' : 'portrait'),
+    'safe area: ' + [safe.paddingTop, safe.paddingRight, safe.paddingBottom, safe.paddingLeft].join(' / '),
+  ].join('\n');
+}
+function read() {
+  const orientation = screen.orientation;
+  return [
+    'Spacer · Sprint 09 横屏验收版',
+    'Git commit: ' + (location.pathname.match(/(?:^|\/)([0-9a-f]{40})(?:\/|$)/i)?.[1] || '当前 URL 未固定到提交'),
+    'Browser: ' + navigator.userAgent,
+    'Context: ' + (window.top === window ? 'top-level' : 'embedded'),
+    'Pointer: coarse ' + matchMedia('(pointer: coarse)').matches + ' · touch points ' + navigator.maxTouchPoints,
     'API: ResizeObserver ' + (typeof ResizeObserver === 'function') +
       ' · requestFullscreen ' + (typeof document.documentElement.requestFullscreen === 'function') +
       ' · fullscreenEnabled ' + (document.fullscreenEnabled ?? 'unavailable') +
       ' · orientation.lock ' + (typeof orientation?.lock === 'function') +
       ' · fullscreen policy ' + ((document.permissionsPolicy || document.featurePolicy)?.allowsFeature?.('fullscreen') ?? 'unknown'),
-    'safe area: ' + [safe.paddingTop, safe.paddingRight, safe.paddingBottom, safe.paddingLeft].join(' / '),
+    '', '当前读数', measure(),
+    '', '竖放时记录', captures[0] || '未记录',
+    '', '横放后记录', captures[1] || '未记录', '',
     'Recent events:', ...entries,
   ].join('\n');
 }
@@ -80,6 +92,13 @@ if (typeof ResizeObserver === 'function') {
 }
 field.addEventListener('blur', () => { field.value = read(); });
 field.value = read();
+for (const button of document.querySelectorAll('[data-capture]')) {
+  button.addEventListener('click', () => {
+    captures[Number(button.dataset.capture)] = measure();
+    field.value = read();
+    document.getElementById('status').textContent = '已' + button.textContent;
+  });
+}
 document.getElementById('copy').addEventListener('click', async () => {
   field.value = read();
   const status = document.getElementById('status');
