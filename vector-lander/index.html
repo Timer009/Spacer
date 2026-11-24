@@ -1618,7 +1618,10 @@ function camFollow(dt, snap = false) {
   const zoom=Math.max(overview,Math.min(desired,fit),W/WORLD_W);
   const blend=snap?1:1-Math.exp(-dt*3.5);
   cam.zoom+=(zoom-cam.zoom)*blend;
-  const frameWeight=0.38*clamp((fit/overview-0.55)/0.45,0,1);
+  // Anticipate the approach before the target crosses the edge of the viewport.
+  const visibleSpan=Math.min(usableWidth,usableHeight)/overview;
+  const weight=1-clamp((distance-visibleSpan*0.35)/(visibleSpan*0.9),0,1);
+  const frameWeight=0.44*weight*weight*(3-2*weight);
   cam.x+=(ship.x+dx*frameWeight-cam.x)*blend;
   cam.y+=(ship.y+dy*frameWeight-cam.y)*blend;
   cam.x=clampCamX(cam.x,cam.zoom);
@@ -1701,12 +1704,30 @@ function drawStars() {
   }
   ctx.globalAlpha = 1;
 }
+function parallax(depth) {
+  return {x:(cam.x-WORLD_W/2)*depth+ship.vx*depth*0.35,
+    y:(cam.y-800)*depth+ship.vy*depth*0.35};
+}
+function drawHorizon(color, depth, height, scale) {
+  const drift=parallax(depth);
+  ctx.beginPath();ctx.moveTo(0,H);
+  for(let x=0;x<=W+16;x+=16){
+    const p=(x+drift.x)*scale;
+    ctx.lineTo(x,height-drift.y+Math.sin(p)*16+Math.sin(p*2.61)*8);
+  }
+  ctx.lineTo(W,H);ctx.closePath();ctx.fillStyle=color;ctx.fill();
+}
 function drawSky() {
   const th = levelDef.theme;
   const g = ctx.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0, th.sky[0]); g.addColorStop(1, th.sky[1]);
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
   if (th.skyBodies) for (const b of th.skyBodies) if (b.kind === 'galaxy') drawGalaxy(b);
+  if (terrain || isTower()) {
+    const tint=levelDef.theme.ridge || '#6b8999';
+    drawHorizon(tint+'28',0.045,H*0.61,0.012);
+    drawHorizon(tint+'48',0.105,H*0.73,0.019);
+  }
   const ds = levelDef.duststorm;                 // 沙尘暴天空染色
   if (ds) {
     const c = mod(time + ds.phase0, ds.period);
@@ -1744,7 +1765,8 @@ function drawSkyBodies() {                        // 每关天象：正确的天
   if (!bodies) return;
   const hudBottom = H - hudLiftForTouch() - 87;
   for (const b of bodies) {
-    const x = b.x * W, y = b.y * H;
+    const drift=parallax(0.022);
+    const x=b.x*W-drift.x, y=b.y*H-drift.y;
     if (b.kind === 'sun') {
       const rg = ctx.createRadialGradient(x, y, 0, x, y, b.r*4);
       rg.addColorStop(0, b.c); rg.addColorStop(0.25, b.c + '88'); rg.addColorStop(1, 'rgba(0,0,0,0)');
@@ -2029,9 +2051,16 @@ function drawSkyDock(cx, y, w, v, p) {             // 木星：天空坞站
 }
 function drawOcean(v) {
   const pad=pads[0], deck=deckPose(pad,time);
-  const horizon=H*0.32;
+  const drift=parallax(0.075);
+  const horizon=clamp(H*0.32-drift.y,18,H*0.58);
   ctx.save();
   ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.fillStyle='rgba(206,220,224,.20)';
+  for(let i=0;i<7;i++){
+    const x=mod(i*151-drift.x*0.35+time*3,W+210)-105;
+    const y=horizon-15-i%3*13;
+    ctx.beginPath();ctx.ellipse(x,y,45+i*4,3+i%3,0,0,TAU);ctx.fill();
+  }
   const water=ctx.createLinearGradient(0,horizon,0,H);
   water.addColorStop(0,'#698f9f'); water.addColorStop(0.16,'#3e7383'); water.addColorStop(1,'#163e51');
   ctx.fillStyle=water; ctx.fillRect(0,horizon,W,H-horizon);
@@ -2039,12 +2068,15 @@ function drawOcean(v) {
   for (let row=0;row<12;row++) {
     const y=horizon+3+row*row*H/520;
     for (let col=0;col<10;col++) {
-      const x=mod(col*W/9 + Math.sin(row*9+col)*33 - cam.x*0.06 + time*(row+2)*0.2,W);
-      ctx.fillStyle='rgba(180,221,223,.25)'; ctx.fillRect(x,y,2+row*1.5,1);
+      const x=mod(col*W/9 + Math.sin(row*9+col)*33 - cam.x*(0.04+row*0.014) + time*(row+2)*0.9,W);
+      const amplitude=1+row*0.22;
+      ctx.strokeStyle=row%3?'rgba(183,222,226,.30)':'rgba(21,61,73,.55)';
+      ctx.beginPath();ctx.moveTo(x,y);ctx.quadraticCurveTo(x+row+6,y-amplitude*Math.sin(time+row+col*0.9),x+9+row*3,y);
+      ctx.stroke();
     }
   }
   ctx.restore();
-  if (pad.y+35<v.t || pad.y-20>v.b) return;
+  if (pad.y+57<v.t || pad.y-14>v.b) return;
   ctx.save();
   ctx.translate(deck.x,deck.y); ctx.rotate(deck.angle);
   const half=pad.w/2;
