@@ -169,7 +169,6 @@ const angDiff = (a, b) => mod(a - b + Math.PI, TAU) - Math.PI;
 /* ---------- 全局常量 ---------- */
 const WORLD_W = 5200;
 const TN = 1025;
-const ROT = 3.6;
 const ALIGN_MIN = 0.82;
 const NLV = 10;                       // 关卡总数
 
@@ -177,7 +176,7 @@ const NLV = 10;                       // 关卡总数
 const S_DEF = { gScale:0.9, thrust:44, burn:6, vyMax:36, vxMax:26, padW:1.2,
                 spawnH:380, lives:4, trail:true, unlockAll:false, shake:true,
                 skin:'classic' };
-const SKIN_KEYS = ['classic', 'falcon9', 'starship'];
+const MODEL_KEYS = ['classic', 'falcon9', 'starship'];
 let S = { ...S_DEF };
 try {
   const cfg = JSON.parse(localStorage.getItem('vl_cfg') || '{}');
@@ -196,7 +195,8 @@ for (const k in CFG_NUM) {
 }
 for (const k of ['trail', 'unlockAll', 'shake'])
   if (typeof S[k] !== 'boolean') S[k] = S_DEF[k];
-if (!SKIN_KEYS.includes(S.skin)) S.skin = S_DEF.skin;
+// Retain the saved "skin" key and IDs from earlier versions.
+if (!MODEL_KEYS.includes(S.skin)) S.skin = S_DEF.skin;
 function saveCfg() { try { localStorage.setItem('vl_cfg', JSON.stringify(S)); } catch (e) {} }
 
 function loadJSON(key, fallback) {
@@ -570,7 +570,8 @@ let terrain = null, pads = [], P = null, geysers = [];
 let asteroids = [];
 let score = 0, lives = S.lives, runFresh = true;
 let mapSel = 0, mapStatsOpen = false;
-const ship = { x:0, y:0, vx:0, vy:0, a:0, fuel:100, thrusting:false, visible:true, flame:0 };
+const ship = { x:0, y:0, vx:0, vy:0, a:0, spin:0, modelId:'classic', fuel:0, fuelCapacity:0,
+               thrusting:false, visible:true, flame:0 };
 let landPad = null, landOff = 0;
 const cam  = { x:2600, y:900, zoom:0.45 };
 let particles = [], frags = [];
@@ -814,8 +815,11 @@ function loadLevel(i) {
 }
 function spawnShip() {
   predictionDue = -Infinity;
-  ship.visible = true; ship.flame = 0; landPad = null; trail = [];
-  ship.fuel = levelDef.fuel;
+  ship.visible = true; ship.flame = 0; ship.thrusting = false; landPad = null; trail = [];
+  ship.modelId = S.skin;
+  ship.spin = 0;
+  ship.fuelCapacity = Math.round(levelDef.fuel * currentModel().tank);
+  ship.fuel = ship.fuelCapacity;
   if (levelDef.type === 'planetoid') {
     ship.x = P.cx + 650; ship.y = P.cy - 600;
     ship.vx = 0; ship.vy = 15;
@@ -854,13 +858,17 @@ function gotoMap() {
   setAmbience(null); releaseAllKeys(); banner = null;
 }
 
-/* ---------- 船体几何与皮肤 ---------- */
+/* ---------- 飞船型号、接触几何与操纵 ---------- */
 const HULL = [[0,-14],[4.5,-4],[11,7],[5,9],[-5,9],[-11,7],[-4.5,-4]];
 const SHIP_PTS = [[0,-14],[11,7],[5,9],[-5,9],[-11,7],[4.5,-2],[-4.5,-2]];
 
-const SKINS = {
+// Normalized game units. The classic profile is the Sprint 09 reference.
+const SHIP_MODELS = {
   classic: {
     label: '经典矢量',
+    handling: '直接转向 · 基准推力与燃料',
+    dryMass: 1, fuelMass: 0, thrust: 1, tank: 1, burn: 1,
+    turnRate: 3.6, moment: 0, torque: 0, landingOffset: 9,
     hull: HULL,
     pts: SHIP_PTS,
     flameY: 9, flameW: 2.6,
@@ -870,6 +878,9 @@ const SKINS = {
   },
   falcon9: {
     label: '猎鹰 9',
+    handling: '灵活转向 · 燃料容量更大',
+    dryMass: 1.18, fuelMass: 0.16, thrust: 1.47, tank: 1.18, burn: 1.14,
+    turnRate: 3.1, moment: 1.2, torque: 15, landingOffset: 9,
     hull: [[0,-14],[2.6,-10],[4,-5],[4,2],[4.6,6],[7,8],[5,9],[-5,9],[-7,8],[-4.6,6],[-4,2],[-4,-5],[-2.6,-10]],
     pts: [[0,-14],[2.6,-10],[5.2,-7],[4,-5],[4,2],[4.6,6],[7,8],[5,9],[0,9],[-5,9],[-7,8],[-4.6,6],[-4,2],[-4,-5],[-5.2,-7],[-2.6,-10]],
     flameY: 9, flameW: 2.2,
@@ -879,6 +890,9 @@ const SKINS = {
   },
   starship: {
     label: '星舰',
+    handling: '转向惯性更强 · 燃料容量最大',
+    dryMass: 1.55, fuelMass: 0.30, thrust: 1.95, tank: 1.36, burn: 1.36,
+    turnRate: 2.25, moment: 1.85, torque: 13, landingOffset: 9,
     hull: [[0,-14],[3.5,-11],[5.5,-6],[6,-1],[6,4],[8,7],[5,9],[-5,9],[-8,7],[-6,4],[-6,-1],[-5.5,-6],[-3.5,-11]],
     pts: [[0,-14],[3.5,-11],[6.5,-8],[5.5,-6],[6,-1],[6,4],[8,7],[5,9],[0,9],[-5,9],[-8,7],[-6,4],[-6,-1],[-5.5,-6],[-6.5,-8],[-3.5,-11]],
     flameY: 9, flameW: 3.0,
@@ -887,7 +901,33 @@ const SKINS = {
     draw: drawStarshipSkin
   }
 };
-function currentSkin() { return SKINS[S.skin] || SKINS.classic; }
+function currentModel(body = ship) { return SHIP_MODELS[body.modelId]; }
+function vehicleMass(body, model) {
+  return model.dryMass + model.fuelMass * clamp(body.fuel / body.fuelCapacity, 0, 1);
+}
+function turnShip(body, model, left, right, dt) {
+  if (!model.moment) {
+    // Preserve direct rotation and operation order for the classic craft.
+    if (left) body.a -= model.turnRate * dt;
+    if (right) body.a += model.turnRate * dt;
+    return;
+  }
+  const command = Number(right) - Number(left);
+  if (!command && !body.spin) return;
+  const moment = model.moment * vehicleMass(body, model) / model.dryMass;
+  const step = model.torque / moment * dt;
+  body.spin += clamp(command * model.turnRate - body.spin, -step, step);
+  body.a += body.spin * dt;
+}
+function fireEngine(body, model, dt) {
+  const acceleration = S.thrust * model.thrust / vehicleMass(body, model);
+  body.fuel = Math.max(0, body.fuel - S.burn * model.burn * dt);
+  body.vx += Math.sin(body.a) * acceleration * dt;
+  body.vy -= Math.cos(body.a) * acceleration * dt;
+}
+function lowFuel(body = ship) {
+  return body.fuel < 22 * (body.fuelCapacity / levelDef.fuel);
+}
 
 function shipPt(px, py) {
   const c = Math.cos(ship.a), s = Math.sin(ship.a);
@@ -895,7 +935,7 @@ function shipPt(px, py) {
 }
 function shipWorldPts(body = ship, points = []) {
   const c = Math.cos(body.a), s = Math.sin(body.a);
-  const offsets = currentSkin().pts;
+  const offsets = currentModel(body).pts;
   points.length = offsets.length;
   for (let i = 0; i < offsets.length; i++) {
     const [px, py] = offsets[i];
@@ -947,7 +987,9 @@ let predictionDue = -Infinity;
 function computePrediction() {
   const pts = [], hull = [];
   let impact = null;
-  const sim = { x:ship.x, y:ship.y, vx:ship.vx, vy:ship.vy, a:ship.a, fuel:ship.fuel };
+  const sim = { x:ship.x, y:ship.y, vx:ship.vx, vy:ship.vy, a:ship.a, spin:ship.spin,
+                modelId:ship.modelId, fuel:ship.fuel, fuelCapacity:ship.fuelCapacity };
+  const model = currentModel(sim);
   const rocks = asteroids.map(a => ({...a}));
   const rain = meteors.map(m => ({...m}));
   const queued = meteorQueue.map(m => ({...m, y:-80, r:METEOR_R}));
@@ -973,13 +1015,8 @@ function computePrediction() {
         rain.some(m => meteorHit(m, p)) || queued.some(m => t >= m.at && meteorHit(m, p)));
       if (hit) { impact = {...hit}; break; }
     }
-    if (left) sim.a -= ROT*FIXED;
-    if (right) sim.a += ROT*FIXED;
-    if (thrust && sim.fuel > 0) {
-      sim.fuel = Math.max(0, sim.fuel - S.burn*FIXED);
-      sim.vx += Math.sin(sim.a)*S.thrust*FIXED;
-      sim.vy -= Math.cos(sim.a)*S.thrust*FIXED;
-    }
+    turnShip(sim, model, left, right, FIXED);
+    if (thrust && sim.fuel > 0) fireEngine(sim, model, FIXED);
     envForces(sim, FIXED, t);
     sim.x += sim.vx*FIXED;
     sim.y += sim.vy*FIXED;
@@ -1066,20 +1103,22 @@ function judgeLanding(pt, normal, pad) {
   const align = n.x*normal.x + n.y*normal.y;
   const spd = Math.hypot(ship.vx, ship.vy);
   if (pad && align >= ALIGN_MIN && ship.vy <= S.vyMax && Math.abs(ship.vx) <= S.vxMax) {
+    const landingOffset = currentModel().landingOffset;
     if (levelDef.type === 'planetoid') {
       const d = dist2(ship.x, ship.y, P.cx, P.cy);
-      ship.x += normal.x * (P.R + 9 - d); ship.y += normal.y * (P.R + 9 - d);
+      ship.x += normal.x * (P.R + landingOffset - d); ship.y += normal.y * (P.R + landingOffset - d);
       ship.a = Math.atan2(normal.x, -normal.y);
     } else if (pad.moving) {
       landPad = pad; landOff = ship.x - padCX(pad, time);   // 浮台/冰筏：跟随
       ship.a = 0;
-    } else { ship.y = pad.y - 9; ship.a = 0; }
-    ship.vx = 0; ship.vy = 0; ship.thrusting = false;
-    const gained = 400*pad.m + Math.round(ship.fuel)*5 + Math.max(0, Math.round((50 - spd)*8));
+    } else { ship.y = pad.y - landingOffset; ship.a = 0; }
+    ship.vx = 0; ship.vy = 0; ship.spin = 0; ship.thrusting = false;
+    const fuelBonus = Math.round(ship.fuel * (levelDef.fuel / ship.fuelCapacity)) * 5;
+    const gained = 400*pad.m + fuelBonus + Math.max(0, Math.round((50 - spd)*8));
     score += gained;
     if (score > best) { best = score; saveBest(); }
     // 星级：1 基础 + 燃料充足 + 柔和触地
-    const starN = clamp(1 + (ship.fuel >= levelDef.fuel*0.35 ? 1 : 0) + (spd <= 20 ? 1 : 0), 1, 3);
+    const starN = clamp(1 + (ship.fuel >= ship.fuelCapacity*0.35 ? 1 : 0) + (spd <= 20 ? 1 : 0), 1, 3);
     progress.stars[levelIdx] = Math.max(progress.stars[levelIdx], starN);
     progress.unlocked = Math.max(progress.unlocked, Math.min(levelIdx + 1, NLV - 1));
     saveProgress();
@@ -1087,7 +1126,7 @@ function judgeLanding(pt, normal, pad) {
     saveStats();
     const starTxt = '★'.repeat(starN) + '☆'.repeat(3 - starN);
     announce('着陆成功 SOFT LANDING  +' + gained,
-             starTxt + ' · 燃料 ×5 加成 · 平台 ×' + pad.m + ' · 剩余燃料 ' + Math.round(ship.fuel),
+             starTxt + ' · 燃料加成 +' + fuelBonus + ' · 平台 ×' + pad.m + ' · 剩余燃料 ' + Math.round(ship.fuel),
              '#7dffb0', 2.0);
     sfxLand(); vib(30);
     spawnDust(ship.x, ship.y + 8, 20);
@@ -1153,7 +1192,7 @@ function explode(x, y, vx, vy) {
                      life: rand(0.5, 1.3), max: 1.3, kind: 'boom' });
   }
   particles.push({ x, y, r: 6, life: 0.45, max: 0.45, kind: 'ring' });
-  const hull = currentSkin().hull;
+  const hull = currentModel().hull;
   for (let i = 0; i < hull.length - 1; i++) {
     const [ax, ay] = hull[i], [bx, by] = hull[i+1];
     frags.push({ ax, ay, bx, by, x, y,
@@ -1194,17 +1233,15 @@ function updateParticles(dt) {
 
 /* ---------- 船体物理 ---------- */
 function physics(dt) {
-  if (keys.left)  ship.a -= ROT * dt;
-  if (keys.right) ship.a += ROT * dt;
+  const model = currentModel();
+  turnShip(ship, model, keys.left, keys.right, dt);
   if (keys.left !== keys.right && Math.random() < dt * 10)
     spawnRCS(keys.right ? -1 : 1);               // 转向时对侧姿态喷口
   const thr = keys.up && ship.fuel > 0;
   ship.thrusting = thr;
   ship.flame += ((thr ? 1 : 0) - ship.flame) * Math.min(1, dt * 9);
   if (thr) {
-    ship.fuel = Math.max(0, ship.fuel - S.burn * dt);
-    ship.vx += Math.sin(ship.a) * S.thrust * dt;
-    ship.vy -= Math.cos(ship.a) * S.thrust * dt;
+    fireEngine(ship, model, dt);
     spawnFlame();
   }
   if (thr !== lastThrustSnd) { setThrustSound(thr); lastThrustSnd = thr; }
@@ -1238,7 +1275,7 @@ function physics(dt) {
 
   warnT += dt;
   if (warnT > 1.15) { warnT = 0;
-    if (ship.fuel > 0 && ship.fuel < 22) sfxBeep(196, 0.12, 'square', 0.08); }
+    if (ship.fuel > 0 && lowFuel()) sfxBeep(196, 0.12, 'square', 0.08); }
 
   if (S.trail) {
     trailT += dt;
@@ -1304,7 +1341,7 @@ function update(dt) {
     case 'landed':
       if (landPad && landPad.moving) {           // 骑着浮台/冰筏移动
         ship.x = padCX(landPad, time) + landOff;
-        ship.y = padY(landPad, time) - 9;
+        ship.y = padY(landPad, time) - currentModel().landingOffset;
       }
       camFollow(dt);
       stateT -= dt;
@@ -2021,7 +2058,7 @@ function drawStarshipSkin() {
 }
 function drawShip() {
   if (!ship.visible) return;
-  const sk = currentSkin();
+  const sk = currentModel();
   drawTrail();
   if (ship.flame > 0.05) {                          // 四层尾焰 + 马赫环
     const len = (10 + 10*ship.flame) * (0.85 + 0.3*Math.abs(Math.sin(time*38)));
@@ -2103,7 +2140,7 @@ function hudText(txt, x, y, size, color, align) {
 }
 function stationTitle(lv) { return lv.name.split(' · ')[0]; }
 function drawMiniShip(x, y, s, on) {
-  const hull = currentSkin().hull, k = 0.5 * s;
+  const hull = currentModel().hull, k = 0.5 * s;
   ctx.globalAlpha = on ? 0.95 : 0.22;
   ctx.strokeStyle = on ? '#9df' : '#667';
   ctx.lineWidth = 1.4;
@@ -2135,7 +2172,7 @@ function drawHUD() {
 
   const fw = compactHUD ? 132 : 170;
   const fh = compactHUD ? 8 : 12;
-  const fr = ship.fuel / levelDef.fuel;
+  const fr = ship.fuel / ship.fuelCapacity;
   ctx.globalAlpha = 0.9;
   ctx.strokeStyle = '#56d9ff'; ctx.lineWidth = 1; ctx.strokeRect(18 + safeLeft, H-40-hudLift, fw, fh);
   ctx.fillStyle = fr > 0.5 ? '#56d9ff' : fr > 0.25 ? '#ffb347' :
@@ -2202,7 +2239,7 @@ function drawHUD() {
 
   if (ship.fuel <= 0 && state === 'playing')
     hudText('NO FUEL 燃料耗尽', W/2, headY + 58, 15, Math.sin(time*7)>0 ? '#ff796c' : '#ff9385', 'center');
-  else if (ship.fuel < 22 && state === 'playing')
+  else if (lowFuel() && state === 'playing')
     hudText('LOW FUEL 低燃料', W/2, headY + 58, 14, Math.sin(time*6)>0 ? '#ffb347' : '#ffd08d', 'center');
 
   if (state === 'playing') {                         // 屏幕外平台方向箭头
@@ -2274,8 +2311,8 @@ function drawOverlays() {
                H*0.34, Math.min(20, W*0.052), '#7fb0d8');
     centerText(levelDef.name, H*0.43, nameSize, '#e8f4ff', true);
     const gtxt = levelDef.type === 'planetoid'
-      ? 'g(表面) ≈ ' + Math.round(levelDef.GM*S.gScale/(levelDef.R*levelDef.R)*10)/10 + ' · 燃料 ' + levelDef.fuel
-      : 'g = ' + Math.round(levelDef.g*S.gScale*10)/10 + ' · 燃料 ' + levelDef.fuel;
+      ? 'g(表面) ≈ ' + Math.round(levelDef.GM*S.gScale/(levelDef.R*levelDef.R)*10)/10 + ' · 燃料 ' + ship.fuelCapacity
+      : 'g = ' + Math.round(levelDef.g*S.gScale*10)/10 + ' · 燃料 ' + ship.fuelCapacity;
     centerText(gtxt, H*0.51, W < 420 ? 13 : 15, '#ffd75e');
     centerText(levelDef.hint, H*0.59, hintSize, '#9db8d8');
   }
@@ -2615,8 +2652,8 @@ function mapHitTest(x, y) {
 const PANEL_ROWS = [
   { key:'gScale', name:'重力倍率',      min:30,  max:150, step:5,
     toSlider:v => v*100, fromSlider:v => v/100, fmt:v => Math.round(v*100) + '%（含引力井）' },
-  { key:'thrust', name:'主引擎推力',    min:25,  max:70,  step:1,   fmt:v => String(v) },
-  { key:'burn',   name:'燃料消耗 / 秒', min:2,   max:14,  step:0.5, fmt:v => String(v) },
+  { key:'thrust', name:'基准推力',      min:25,  max:70,  step:1,   fmt:v => String(v) },
+  { key:'burn',   name:'基准耗油 / 秒', min:2,   max:14,  step:0.5, fmt:v => String(v) },
   { key:'vyMax',  name:'安全下降速度',  min:15,  max:60,  step:1,   fmt:v => '≤ ' + v },
   { key:'vxMax',  name:'安全横移速度',  min:8,   max:45,  step:1,   fmt:v => '≤ ' + v },
   { key:'padW',   name:'平台宽度倍率',  min:100, max:250, step:5,
@@ -2629,11 +2666,9 @@ const PANEL_CHECKS = [
   { key:'unlockAll', name:'解锁全部关卡' },
   { key:'shake',     name:'屏幕震动' },
 ];
-const PANEL_SKINS = [
-  { key:'classic',  name:'经典' },
-  { key:'falcon9',  name:'猎鹰 9' },
-  { key:'starship', name:'星舰' },
-];
+const PANEL_MODELS = MODEL_KEYS.map(key => ({key}));
+const modelNote = document.createElement('div');
+modelNote.className = 'skinLab';
 let panelOpen = false;
 function refreshPanel() {
   for (const d of PANEL_ROWS) {
@@ -2641,11 +2676,12 @@ function refreshPanel() {
     d.valEl.textContent = d.fmt(S[d.key]);
   }
   for (const d of PANEL_CHECKS) d.inpEl.checked = !!S[d.key];
-  for (const d of PANEL_SKINS) {
+  for (const d of PANEL_MODELS) {
     const selected = S.skin === d.key;
     d.btnEl.classList.toggle('active', selected);
     d.btnEl.setAttribute('aria-pressed', String(selected));
   }
+  modelNote.textContent = SHIP_MODELS[S.skin].handling + '。下次起飞、重置或重生生效。';
 }
 function buildPanel() {
   const rows = document.getElementById('panelRows');
@@ -2678,18 +2714,17 @@ function buildPanel() {
   }
   const skinRow = document.createElement('div'); skinRow.className = 'skinRow';
   const skinLab = document.createElement('div'); skinLab.className = 'skinLab';
-  skinLab.textContent = '飞船外观';
+  skinLab.textContent = '飞船型号';
   const skinBtns = document.createElement('div'); skinBtns.className = 'skinBtns';
-  for (const d of PANEL_SKINS) {
+  for (const d of PANEL_MODELS) {
     const b = document.createElement('button');
-    b.type = 'button'; b.className = 'skinBtn'; b.textContent = d.name;
+    b.type = 'button'; b.className = 'skinBtn'; b.textContent = SHIP_MODELS[d.key].label;
     b.addEventListener('click', () => {
-      if (!SKIN_KEYS.includes(d.key)) return;
       S.skin = d.key; saveCfg(); refreshPanel();
     });
     d.btnEl = b; skinBtns.appendChild(b);
   }
-  skinRow.appendChild(skinLab); skinRow.appendChild(skinBtns);
+  skinRow.appendChild(skinLab); skinRow.appendChild(skinBtns); skinRow.appendChild(modelNote);
   rows.appendChild(skinRow);
   refreshPanel();
 }
@@ -3058,7 +3093,7 @@ window.game = {
   get best() { return best; },
   teleport(x, y, vx = 0, vy = 0, a = 0) {
     if (state === 'levelIntro') state = 'playing';
-    ship.x = x; ship.y = y; ship.vx = vx; ship.vy = vy; ship.a = a;
+    ship.x = x; ship.y = y; ship.vx = vx; ship.vy = vy; ship.a = a; ship.spin = 0;
     ship.fuel = Math.max(ship.fuel, 30); ship.visible = true;
   },
   jump(n) {
@@ -3090,7 +3125,7 @@ function viewportDebugText() {
   const orientation = screen.orientation;
   const standalone = matchMedia('(display-mode: standalone)').matches;
   return [
-    'Spacer · Sprint 09 横屏验收版',
+    'Spacer · Sprint 10 飞船物理',
     'Git commit: ' + (commit || '当前 URL 未固定到提交'),
     'Browser: ' + navigator.userAgent,
     'Context: ' + (window.top === window ? 'top-level' : 'embedded') + (standalone ? ' · standalone' : ''),

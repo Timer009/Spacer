@@ -9,7 +9,7 @@ const { chromium, webkit, firefox } = require(process.env.SPACER_TEST_PLAYWRIGHT
 const root = path.resolve(__dirname, '..');
 const evidence = process.env.SPACER_EVIDENCE_DIR || fs.mkdtempSync(path.join(os.tmpdir(), 'spacer-hotfix-'));
 const base = execFileSync('git', ['-C', root, 'show', 'a10a463:vector-lander/index.html']);
-const hotfix02 = execFileSync('git', ['-C', root, 'show', '319d54a:vector-lander/index.html']);
+const release = execFileSync('git', ['-C', root, 'show', 'fbc8e0f:vector-lander/index.html']);
 const html = fs.readFileSync(path.join(root, 'vector-lander/index.html'));
 const probe = fs.readFileSync(path.join(root, 'vector-lander/orientation-check.html'));
 const profiles = [
@@ -21,7 +21,7 @@ fs.mkdirSync(evidence, {recursive:true});
 function serve() {
   const server = http.createServer((req, res) => {
     const iframe = '<iframe id="embedded" src="/fix?debug=1" allow="fullscreen \'none\'" sandbox="allow-scripts allow-same-origin" style="display:block;width:320px;height:568px;border:0"></iframe>';
-    const body = {'/base':base, '/hotfix02':hotfix02, '/fix':html, '/orientation-check':probe, '/embedded':iframe}[new URL(req.url, 'http://localhost').pathname];
+    const body = {'/base':base, '/release':release, '/fix':html, '/orientation-check':probe, '/embedded':iframe}[new URL(req.url, 'http://localhost').pathname];
     if (!body) { res.writeHead(404); res.end(); return; }
     res.writeHead(200, {'Content-Type':'text/html; charset=utf-8', 'Cache-Control':'no-store'});
     res.end(body);
@@ -50,14 +50,19 @@ function instrument() {
     return raf(run);
   };
 }
-async function open(browser, host, url, w, h, mobile=true, init=instrument, frozen=false) {
+async function open(browser, host, url, w, h, mobile=true, init=instrument, frozen=false, initialStorage={}) {
   const page = await browser.newPage({viewport:{width:w,height:h},
     isMobile:mobile && browser.browserType().name() !== 'firefox', hasTouch:mobile, deviceScaleFactor:mobile ? 2 : 1});
   page.setDefaultTimeout(7000);
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.addInitScript({content:'('+init.toString()+')();'+(frozen ? 'window.__frames.frozen=true;' : '')});
-  if (url !== '/orientation-check') await page.addInitScript(() => localStorage.clear());
+  if (url !== '/orientation-check') await page.addInitScript(storage => {
+    if (sessionStorage.getItem('__spacer_test_seeded')) return;
+    localStorage.clear();
+    for (const [key,value] of Object.entries(storage)) localStorage.setItem(key,JSON.stringify(value));
+    sessionStorage.setItem('__spacer_test_seeded','1');
+  }, initialStorage);
   await page.goto(host + url);
   if (url !== '/orientation-check') await page.waitForFunction(() => window.game?.state === 'title');
   return [page, errors];
@@ -497,10 +502,11 @@ async function containerAndNative(browser,name,host) {
 }
 async function regression(browser,name,host) {
   const comparison = [];
-  for (const route of ['/hotfix02','/fix']) {
-    const [page,errors] = await open(browser,host,route,568,320,true,instrument,true);
+  const runs = [['/release','classic'], ['/fix','classic'], ['/fix','falcon9'], ['/fix','starship']];
+  for (const [route,modelId] of runs) {
+    const [page,errors] = await open(browser,host,route,568,320,true,instrument,true,{vl_cfg:{skin:modelId}});
     try {
-      const result = await page.evaluate(() => {
+      const result = await page.evaluate(({isNew,modelId}) => {
         __frames.frozen = true;
         const require = (condition,message) => {if (!condition) throw new Error(message);};
         const snapshot = () => [game.state,game.ship.x,game.ship.y,game.ship.vx,game.ship.vy,game.ship.a,game.ship.fuel,game.lives,game.score];
@@ -511,6 +517,7 @@ async function regression(browser,name,host) {
         for (let i=0;i<10;i++) {
           gotoMap(); runFresh = true; launch(i); require(game.state === 'levelIntro','legal launch '+i);
           game.tick(1210); require(game.state === 'playing','intro '+i);
+          if (isNew) require(ship.modelId === modelId && ship.fuelCapacity === Math.round(levelDef.fuel * currentModel().tank),'spawn model and tank '+i);
           const fuel = game.ship.fuel;
           window.dispatchEvent(new KeyboardEvent('keydown',{code:'ArrowUp'}));
           game.tick(120);
@@ -533,15 +540,21 @@ async function regression(browser,name,host) {
           game.tick(40);
           require(game.state === 'landed' && game.progress.stars[i] === 3,'soft landing '+i);
           flights.push({flight,forecast,result:snapshot()});
+          if (landPad) {
+            const offset = landOff;
+            game.tick(120);
+            require(Math.abs(ship.x - padCX(landPad,time) - offset) < 1e-7,'moving landing deck '+i);
+            require(Math.abs(ship.y - padY(landPad,time) + 9) < 1e-7,'moving landing height '+i);
+          }
         }
         require(game.progress.unlocked === 9 && game.stats.landings === 10 && game.stats.crashes === 10,'progress/stats');
         const storage = [localStorage.getItem('vl_progress'),localStorage.getItem('vl_stats')];
         require(JSON.parse(storage[0]).stars.every(n => n===3),'persisted stars');
         require(JSON.parse(storage[1]).landings===10,'persisted stats');
         return {flights,storage};
-      });
-      comparison.push(result);
-      if (route === '/fix') {
+      }, {isNew:route==='/fix',modelId});
+      if (modelId === 'classic') comparison.push(result);
+      if (route === '/fix' && modelId === 'classic') {
         await page.setViewportSize({width:320,height:568});
         await page.evaluate(() => { __frames.frozen = false; });
         await size(page,320,568);
@@ -584,11 +597,93 @@ async function regression(browser,name,host) {
     } finally { await page.close(); }
   }
   assert.deepEqual(comparison[1],comparison[0],'seeded flight states, prediction and landings unchanged from baseline');
-  console.log(name+' regression: 10 legal starts, 10 thrust/forecast comparisons, 10 hard collisions/restarts, 10 assisted 3-star landings, unlock/storage parity; D5 declutter and rotating settlement PASS');
+  console.log(name+' regression: 3 models × 10 starts, thrust/prediction, hard collisions/restarts, assisted 3-star landings and saved progression; classic flight/forecast/save exactly match Sprint 09; moving decks and rotating settlement PASS');
+}
+async function vehicleControls(browser,name,host) {
+  const [page,errors] = await open(browser,host,'/fix',568,320,true,instrument,true,{
+    vl_cfg:{skin:'falcon9',thrust:47},
+    vl_progress:{unlocked:2,stars:[3,1,0,0,0,0,0,0,0,0]},
+    vl_stats:{landings:2,crashes:1,perfects:1},
+  });
+  try {
+    await page.evaluate(() => { game.jump(0); game.ship.fuel -= 10; });
+    const before = await page.evaluate(() => [ship.modelId,ship.fuel,ship.x,ship.y,S.thrust,game.progress.unlocked,game.stats.landings]);
+    assert.deepEqual([before[0],before[4],before[5],before[6]],['falcon9',47,2,2]);
+    await page.locator('#gear').click();
+    await page.getByRole('button',{name:'星舰',exact:true}).click();
+    await page.locator('#btnClose').click();
+    assert.deepEqual(await page.evaluate(() => [ship.modelId,ship.fuel,ship.x,ship.y,S.thrust,game.progress.unlocked,game.stats.landings]),before);
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('vl_cfg')).skin),'starship');
+    await page.keyboard.press('r');
+    assert.deepEqual(await page.evaluate(() => [ship.modelId,ship.spin,ship.fuel===ship.fuelCapacity]),['starship',0,true]);
+    await page.reload();
+    await page.waitForFunction(() => game.settings.skin === 'starship');
+    assert.deepEqual(await page.evaluate(() => [game.settings.thrust,game.progress.unlocked,game.progress.stars[0],game.stats.landings]),[47,2,3,2]);
+    const models = await page.evaluate(() => {
+      const models = {};
+      for (const id of MODEL_KEYS) {
+        S.skin = id;
+        game.jump(0);
+        game.teleport(1300,200);
+        const model = currentModel();
+        const full = { ...ship }, light = { ...ship, fuel:ship.fuel/2 };
+        const mass = vehicleMass(full,model), lightMass = vehicleMass(light,model);
+        fireEngine(full,model,FIXED);
+        fireEngine(light,model,FIXED);
+        keys.right = true; keys.up = true;
+        const before = JSON.stringify(ship);
+        const gravity = Math.max(1,levelDef.g*S.gScale);
+        const eta = Math.sqrt(2*gravity*Math.max(0,heightAt(ship.x)-ship.y))/gravity;
+        const stride = Math.ceil(Math.ceil(clamp(eta+2,4,24)/FIXED)/64);
+        computePrediction();
+        if (JSON.stringify(ship)!==before || !pred.pts.length) throw Error(id+' prediction mutated ship or has no points');
+        const target = pred.pts[0];
+        game.tick(stride*1000/120);
+        if (Math.hypot(ship.x-target.x,ship.y-target.y)>1e-10) throw Error(id+' live path differs from prediction');
+        keys.right = false; keys.up = false;
+        const spin = ship.spin;
+        game.tick(1000/120);
+        const remainingSpin = ship.spin;
+        game.teleport(1300,200);
+        ship.fuel = 0;
+        keys.up = true;
+        game.tick(1000/120);
+        keys.up = false;
+        if (ship.fuel!==0 || ship.thrusting || ship.vy<=0) throw Error(id+' empty-tank behavior');
+        game.jump(9);
+        game.teleport(2000,-350,15,2);
+        keys.up = true; keys.right = true;
+        const start = performance.now();
+        for (let i=0;i<50;i++) computePrediction();
+        const predictionMs = +( (performance.now()-start)/50 ).toFixed(2);
+        keys.up = false; keys.right = false;
+        models[id] = {mass,lightMass,fuel:full.fuelCapacity,burn:+((full.fuelCapacity-full.fuel)/FIXED).toFixed(2),
+                      fullDv:+(-full.vy).toFixed(5), lightDv:+(-light.vy).toFixed(5), spin,remainingSpin,
+                      hull:model.pts.map(([x,y])=>[x,y]),predictionMs};
+      }
+      return models;
+    });
+    const {classic,falcon9,starship} = models;
+    assert.ok(classic.mass<falcon9.mass && falcon9.mass<starship.mass);
+    assert.ok(classic.fuel<falcon9.fuel && falcon9.fuel<starship.fuel);
+    assert.ok(classic.burn<falcon9.burn && falcon9.burn<starship.burn);
+    assert.equal(classic.fullDv,classic.lightDv);
+    for (const model of [falcon9,starship]) {
+      assert.ok(model.lightMass<model.mass && model.fullDv<model.lightDv);
+      assert.ok(model.spin>model.remainingSpin && model.remainingSpin>0);
+    }
+    assert.notEqual(falcon9.fullDv,starship.fullDv);
+    assert.ok(falcon9.spin>starship.spin);
+    assert.notDeepEqual(falcon9.hull,starship.hull);
+    assert.notDeepEqual(classic.hull,falcon9.hull);
+    assert.deepEqual(errors,[]);
+    const timings = Object.fromEntries(Object.entries(models).map(([id,m])=>[id,m.predictionMs]));
+    console.log(name+' vehicle controls: old saves, next-launch/reset model, distinct mass/thrust/tank/burn/inertia/hull and exact first live prediction sample PASS; D10 forecast ms '+JSON.stringify(timings));
+  } finally { await page.close(); }
 }
 async function performanceSample(browser,name,host) {
   const values = [];
-  for (const route of ['/hotfix02','/fix']) {
+  for (const route of ['/release','/fix']) {
     const [page,errors] = await open(browser,host,route,844,390);
     try {
       await page.evaluate(() => { game.jump(9); __frames.times.length=0; });
@@ -635,6 +730,7 @@ async function performanceSample(browser,name,host) {
         await compatibleLandscape(browser,name,host);
         await compatibilityLink(browser,name,host);
         await regression(browser,name,host);
+        await vehicleControls(browser,name,host);
         if (name === 'chromium' || name === 'webkit') await performanceSample(browser,name,host);
       } finally { await browser.close(); }
     }
