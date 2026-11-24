@@ -2107,7 +2107,7 @@ function drawHUD() {
     const cyc = levelDef.stormCycle ? mod(time + stormPhase0, 16) : 0;
     const gale = !!levelDef.stormCycle && cyc >= 11;
     const building = !!levelDef.stormCycle && cyc >= 8 && cyc < 11;
-    const wcol = gale ? (Math.sin(time*10) > 0 ? '#ff4d4d' : '#801818') : '#ffb347';
+    const wcol = gale ? (Math.sin(time*10) > 0 ? '#ff796c' : '#ff9385') : '#ffb347';
     const dir = w >= 0 ? 1 : -1;
     ctx.globalAlpha = 0.85;
     const label = '风 WIND' + (gale ? ' · 风暴!' : building ? ' · 风暴接近' : '');
@@ -2135,7 +2135,7 @@ function drawHUD() {
     const ds = levelDef.duststorm;
     const c = mod(time + ds.phase0, ds.period);
     if (c >= ds.calm + ds.warn)
-      hudText('沙尘暴 SANDSTORM', W/2, headY + 40, 15, Math.sin(time*8) > 0 ? '#ff8a5a' : '#7a3a1c', 'center');
+      hudText('沙尘暴 SANDSTORM', W/2, headY + 40, 15, Math.sin(time*8) > 0 ? '#ff8a5a' : '#ffab79', 'center');
     else if (c >= ds.calm)
       hudText('沙尘暴预警 SANDSTORM INCOMING', W/2, headY + 40, 13, '#ffb347', 'center');
   }
@@ -2147,9 +2147,9 @@ function drawHUD() {
   }
 
   if (ship.fuel <= 0 && state === 'playing')
-    hudText('NO FUEL 燃料耗尽', W/2, headY + 58, 15, Math.sin(time*7)>0 ? '#ff4d4d' : '#701c1c', 'center');
+    hudText('NO FUEL 燃料耗尽', W/2, headY + 58, 15, Math.sin(time*7)>0 ? '#ff796c' : '#ff9385', 'center');
   else if (ship.fuel < 22 && state === 'playing')
-    hudText('LOW FUEL 低燃料', W/2, headY + 58, 14, Math.sin(time*6)>0 ? '#ffb347' : '#6b4a10', 'center');
+    hudText('LOW FUEL 低燃料', W/2, headY + 58, 14, Math.sin(time*6)>0 ? '#ffb347' : '#ffd08d', 'center');
 
   if (state === 'playing') {                         // 屏幕外平台方向箭头
     let bestP = null, bd = 1e9;

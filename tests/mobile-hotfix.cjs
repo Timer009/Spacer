@@ -357,15 +357,22 @@ async function regression(browser,name,host) {
         await page.setViewportSize({width:568,height:320});
         await size(page,568,320);
         await page.evaluate(() => { game.jump(4); game.ship.fuel=19; });
-        const words = await page.evaluate(() => {
+        const textPaint = await page.evaluate(() => {
           const all = [];
           const original = CanvasRenderingContext2D.prototype.fillText;
-          CanvasRenderingContext2D.prototype.fillText = function(word,...args) { all.push(word); original.call(this,word,...args); };
-          try { game.draw(); } finally { CanvasRenderingContext2D.prototype.fillText = original; }
+          CanvasRenderingContext2D.prototype.fillText = function(word,...args) {
+            all.push([word,this.fillStyle]);
+            original.call(this,word,...args);
+          };
+          const savedTime = time;
+          try {
+            time = Math.PI/12; game.draw();
+            time = Math.PI/4; game.draw();
+          } finally { time = savedTime; CanvasRenderingContext2D.prototype.fillText = original; }
           return all;
         });
-        assert.ok(words.includes('LOW FUEL 低燃料'));
-        assert.ok(!words.includes('地球'));
+        assert.deepEqual(textPaint.filter(([word]) => word==='LOW FUEL 低燃料').map(([,color])=>color), ['#ffb347','#ffd08d']);
+        assert.ok(!textPaint.some(([word])=>word==='地球'));
         await page.screenshot({path:path.join(evidence,name+'-d5-568x320.png')});
         await page.evaluate(() => {
           const target = game.padProbe().probes[0];
