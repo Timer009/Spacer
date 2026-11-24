@@ -581,13 +581,16 @@ function genAsteroids(n) {
                      vx: (rand(0,1)<0.5?-1:1) * rand(2, 6), vy: rand(-2, 2) });
   }
 }
+function moveAsteroid(a, dt) {
+  a.x += a.vx * dt;
+  if (a.x < -120) a.x += WORLD_W + 240;
+  else if (a.x > WORLD_W + 120) a.x -= WORLD_W + 240;
+  a.y += a.vy * dt;
+  if (a.y < 260 || a.y > 980) { a.vy *= -1; a.y = clamp(a.y, 260, 980); }
+}
 function updateAsteroids(dt) {
   for (const a of asteroids) {
-    a.x += a.vx * dt;
-    if (a.x < -120) a.x += WORLD_W + 240;
-    else if (a.x > WORLD_W + 120) a.x -= WORLD_W + 240;
-    a.y += a.vy * dt;
-    if (a.y < 260 || a.y > 980) { a.vy *= -1; a.y = clamp(a.y, 260, 980); }
+    moveAsteroid(a, dt);
     a.rot += a.vr * dt;
   }
 }
@@ -681,6 +684,7 @@ function loadLevel(i) {
   state = 'levelIntro'; stateT = 1.2;
 }
 function spawnShip() {
+  predictionDue = -Infinity;
   ship.visible = true; ship.flame = 0; landPad = null; trail = [];
   ship.fuel = levelDef.fuel;
   if (levelDef.type === 'planetoid') {
@@ -759,16 +763,22 @@ function shipPt(px, py) {
   const c = Math.cos(ship.a), s = Math.sin(ship.a);
   return [ship.x + px*c - py*s, ship.y + px*s + py*c];
 }
-function shipWorldPts() {
-  return currentSkin().pts.map(([px, py]) => {
-    const [x, y] = shipPt(px, py);
-    return { x, y };                          // 必须是 {x,y} 对象：碰撞/陨石/着陆判定都按对象取值
-  });
+function shipWorldPts(body = ship, points = []) {
+  const c = Math.cos(body.a), s = Math.sin(body.a);
+  const offsets = currentSkin().pts;
+  points.length = offsets.length;
+  for (let i = 0; i < offsets.length; i++) {
+    const [px, py] = offsets[i];
+    const p = points[i] || (points[i] = {});
+    p.x = body.x + px*c - py*s;
+    p.y = body.y + px*s + py*c;
+  }
+  return points;
 }
 function noseDir() { return { x: Math.sin(ship.a), y: -Math.cos(ship.a) }; }
 
 /* ---------- 环境力（引力 + 侧风/风暴周期 + 大气阻力 + 沙尘暴 + 间歇泉）
-   物理与轨迹预测共用，保证预测线与实际一致 ---------- */
+   物理与轨迹预测共用 ---------- */
 function windAt(t) {
   const w = levelDef.wind;
   if (!w) return 0;
@@ -802,36 +812,70 @@ function envForces(o, dt, t) {
 }
 
 /* ---------- 轨迹预测（含风/阻力/间歇泉/移动平台） ---------- */
+const PREDICTION_INTERVAL = 1/12;
+let predictionDue = -Infinity;
 function computePrediction() {
-  const pts = []; let impact = null;
-  const sim = { x:ship.x, y:ship.y, vx:ship.vx, vy:ship.vy };
-  const a = ship.a;
-  const thr = keys.up && ship.fuel > 0;
-  const dt = 1/40, t0 = time;
-  for (let i = 0; i < 160; i++) {
-    const t = t0 + i*dt;
-    if (thr) { sim.vx += Math.sin(a)*S.thrust*dt; sim.vy -= Math.cos(a)*S.thrust*dt; }
-    envForces(sim, dt, t);
-    sim.x += sim.vx*dt; sim.y += sim.vy*dt;
-    if (i % 5 === 0) pts.push({ x: sim.x, y: sim.y });
-    let hit = false;
-    if (levelDef.type === 'planetoid') {
-      if (dist2(sim.x, sim.y, P.cx, P.cy) <= P.R - 2) hit = true;
-    } else if (levelDef.type === 'float') {
-      if (sim.y > 1750) hit = true;
-      else for (const pd of pads) {
-        const cx = padCX(pd, t);
-        if (Math.abs(sim.x - cx) <= pd.w/2 && sim.y >= pd.y && sim.y <= pd.y + 12) { hit = true; break; }
+  const pts = [], hull = [];
+  let impact = null;
+  const sim = { x:ship.x, y:ship.y, vx:ship.vx, vy:ship.vy, a:ship.a, fuel:ship.fuel };
+  const rocks = asteroids.map(a => ({...a}));
+  const rain = meteors.map(m => ({...m}));
+  const queued = meteorQueue.map(m => ({...m, y:-80, r:METEOR_R}));
+  const left = keys.left, right = keys.right, thrust = keys.up;
+  // 小步长与实际飞行一致。低重力或高空时延长视距，最多 24 秒。
+  const height = terrain ? heightAt(sim.x) - sim.y :
+    P ? dist2(sim.x, sim.y, P.cx, P.cy) - P.R : Math.abs(pads[0].y - sim.y);
+  const gravity = Math.max(1, (P ? levelDef.GM / (P.R*P.R) : levelDef.g) * S.gScale);
+  const descent = P ? ((P.cx - sim.x)*sim.vx + (P.cy - sim.y)*sim.vy) /
+    Math.max(1, height + P.R) : sim.vy;
+  const eta = (Math.sqrt(descent*descent + 2*gravity*Math.max(0,height)) - descent) / gravity;
+  const horizon = clamp(eta + 2, 4, 24);
+  const steps = Math.ceil(horizon / FIXED);
+  const stride = Math.ceil(steps / 64);
+  const meteorHit = (m, p) => m.y <= 1600 && dist2(p.x, p.y, m.x, m.y) < METEOR_R;
+  for (let i = 1; i <= steps; i++) {
+    const t = time + i*FIXED;
+    for (const m of rain) m.y += m.vy*FIXED;
+    for (const m of queued) if (t >= m.at) m.y += m.vy*FIXED;
+    if (rain.length || queued.length) {
+      // 陨石雨先更新，再执行本步的船体物理。排队陨石以预警中心估算。
+      const hit = shipWorldPts(sim, hull).find(p =>
+        rain.some(m => meteorHit(m, p)) || queued.some(m => t >= m.at && meteorHit(m, p)));
+      if (hit) { impact = {...hit}; break; }
+    }
+    if (left) sim.a -= ROT*FIXED;
+    if (right) sim.a += ROT*FIXED;
+    if (thrust && sim.fuel > 0) {
+      sim.fuel = Math.max(0, sim.fuel - S.burn*FIXED);
+      sim.vx += Math.sin(sim.a)*S.thrust*FIXED;
+      sim.vy -= Math.cos(sim.a)*S.thrust*FIXED;
+    }
+    envForces(sim, FIXED, t);
+    sim.x += sim.vx*FIXED;
+    sim.y += sim.vy*FIXED;
+    if (P) {
+      if (dist2(sim.x, sim.y, P.cx, P.cy) > 5400) break;
+    } else {
+      if (sim.x < 24) { sim.x = 24; sim.vx = Math.abs(sim.vx)*0.5; }
+      if (sim.x > WORLD_W-24) { sim.x = WORLD_W-24; sim.vx = -Math.abs(sim.vx)*0.5; }
+      if (sim.y < -700) { sim.y = -700; sim.vy = Math.max(sim.vy, 0); }
+      if (levelDef.type === 'float' && sim.y > 1750) {
+        impact = {x:sim.x, y:sim.y}; break;
       }
-    } else if (heightAt(sim.x) <= sim.y) hit = true;
-    if (hit) { impact = { x: sim.x, y: sim.y }; break; }
+    }
+    if (i % stride === 0) pts.push({x:sim.x, y:sim.y});
+    for (const rock of rocks) moveAsteroid(rock, FIXED);
+    shipWorldPts(sim, hull);
+    const obstacle = hull.find(p => rocks.some(a => dist2(p.x,p.y,a.x,a.y) < a.r*0.72) ||
+                                   spires.some(s => hitsSpire(s, p)));
+    const hit = obstacle || findContact(hull, t)?.pt;
+    if (hit) { impact = {...hit}; break; }
   }
   pred = { pts, impact };
 }
 
 /* ---------- 碰撞与着陆判定 ---------- */
-function checkContact() {
-  const pts = shipWorldPts();
+function findContact(pts, t) {
   if (levelDef.type === 'planetoid') {
     for (const p of pts) {
       const d = dist2(p.x, p.y, P.cx, P.cy);
@@ -839,40 +883,53 @@ function checkContact() {
         const nx = (p.x - P.cx)/d, ny = (p.y - P.cy)/d;
         const ang = Math.atan2(p.y - P.cy, p.x - P.cx);
         const onPad = Math.abs(angDiff(ang, -Math.PI/2)) < levelDef.pads[0].arc;
-        judgeLanding(p, { x:nx, y:ny }, onPad ? { m: levelDef.pads[0].m } : null);
-        return;
+        return {pt:p, normal:{x:nx,y:ny}, pad:onPad ? {m:levelDef.pads[0].m} : null};
       }
     }
   } else if (levelDef.type === 'float') {
     for (const p of pts) for (const pd of pads) {
-      const cx = padCX(pd, time);
+      const cx = padCX(pd, t);
       if (p.x >= cx - pd.w/2 - 2 && p.x <= cx + pd.w/2 + 2 &&
           p.y >= pd.y && p.y <= pd.y + 16) {
-        if (ship.vy < -3) { crash('撞上平台底部'); return; }
-        judgeLanding(p, { x:0, y:-1 }, pd);
-        return;
+        return {pt:p, normal:{x:0,y:-1}, pad:pd, floating:true};
       }
     }
   } else {
     for (const pd of pads) {                       // 冰筏（漂移平台）优先判定
       if (!pd.moving) continue;
-      const cx = padCX(pd, time), py = heightAt(cx) - 2;
+      const cx = padCX(pd, t), py = heightAt(cx) - 2;
       for (const p of pts)
         if (p.x >= cx - pd.w/2 - 2 && p.x <= cx + pd.w/2 + 2 &&
             p.y >= py && p.y <= py + 16) {
-          judgeLanding(p, { x:0, y:-1 }, pd);
-          return;
+          return {pt:p, normal:{x:0,y:-1}, pad:pd};
         }
     }
     for (const p of pts) {
       const gy = heightAt(p.x);
       if (p.y >= gy) {
         const onPad = pads.find(pd => p.x >= pd.x1 - 3 && p.x <= pd.x2 + 3);
-        judgeLanding(p, { x:0, y:-1 }, onPad || null);
-        return;
+        return {pt:p, normal:{x:0,y:-1}, pad:onPad || null};
       }
     }
   }
+}
+function hitsSpire(s, p) {
+  if (s.radial) {
+    const d = dist2(p.x, p.y, P.cx, P.cy);
+    if (d > P.R || d < P.R - s.h) return false;
+    const ang = Math.atan2(p.y - P.cy, p.x - P.cx);
+    const hw = s.w / 2 * (P.R - d) / s.h;
+    return Math.abs(angDiff(ang, s.ang)) * d <= hw;
+  }
+  if (p.x < s.x - s.w/2 || p.x > s.x + s.w/2 || p.y < s.top || p.y > s.base + 4) return false;
+  const hw = s.w / 2 * clamp((p.y - s.top) / (s.base - s.top), 0, 1);
+  return Math.abs(p.x - s.x) <= hw;
+}
+function checkContact() {
+  const contact = findContact(shipWorldPts(), time);
+  if (!contact) return;
+  if (contact.floating && ship.vy < -3) { crash('撞上平台底部'); return; }
+  judgeLanding(contact.pt, contact.normal, contact.pad);
 }
 function judgeLanding(pt, normal, pad) {
   const n = noseDir();
@@ -1046,19 +1103,8 @@ function physics(dt) {
     for (const p of pts)
       if (dist2(p.x, p.y, a.x, a.y) < a.r * 0.72) { crash('陨石撞击'); return; }
 
-  for (const s of spires) for (const p of pts) {          // 岩柱碰撞
-    if (s.radial) {
-      const d = dist2(p.x, p.y, P.cx, P.cy);
-      if (d <= P.R && d >= P.R - s.h) {
-        const ang = Math.atan2(p.y - P.cy, p.x - P.cx);
-        const hw = s.w / 2 * (P.R - d) / s.h;
-        if (Math.abs(angDiff(ang, s.ang)) * d <= hw) { crash('撞上岩柱'); return; }
-      }
-    } else if (p.x >= s.x - s.w/2 && p.x <= s.x + s.w/2 && p.y >= s.top && p.y <= s.base + 4) {
-      const hw = s.w / 2 * clamp((p.y - s.top) / (s.base - s.top), 0, 1);
-      if (Math.abs(p.x - s.x) <= hw) { crash('撞上岩柱'); return; }
-    }
-  }
+  for (const s of spires) for (const p of pts)
+    if (hitsSpire(s, p)) { crash('撞上岩柱'); return; }
 
   warnT += dt;
   if (warnT > 1.15) { warnT = 0;
@@ -1070,7 +1116,6 @@ function physics(dt) {
       if (trail.length > 34) trail.shift(); }
   }
 
-  computePrediction();
   checkContact();
 }
 
@@ -1734,7 +1779,12 @@ function drawFrags() {
   ctx.globalAlpha = 1;
 }
 function drawPrediction() {
-  if (state !== 'playing' || !pred.pts.length) return;
+  if (state !== 'playing') return;
+  if (time >= predictionDue) {
+    computePrediction();
+    predictionDue = time + PREDICTION_INTERVAL;
+  }
+  if (!pred.pts.length && !pred.impact) return;
   const noisy = levelDef.predNoise && mod(time, 5) < 0.8;   // 冥王星：预测线干扰
   ctx.fillStyle = '#59ffc8';
   pred.pts.forEach((p, i) => {
