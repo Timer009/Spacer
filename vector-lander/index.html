@@ -149,7 +149,7 @@
     <div class="modeCards">
       <button type="button" class="modeCard" data-mode="campaign"><strong>太阳系战役</strong><span>十站航线 · 星级与解锁</span></button>
       <button type="button" class="modeCard" data-mode="free"><strong>自由飞行</strong><span>自选场景和飞船 · 无限重试</span></button>
-      <button type="button" class="modeCard" data-mode="recovery"><strong>回收挑战</strong><span>驾驶 Falcon 9 着陆移动甲板</span></button>
+      <button type="button" class="modeCard" data-mode="recovery"><strong>回收挑战</strong><span>移动甲板着陆与双臂捕获</span></button>
     </div>
   </div>
 </section>
@@ -658,10 +658,13 @@ const OCEAN = {
 };
 const RECOVERY_MISSIONS = [
   {mode:'recovery', modelId:'falcon9', title:'海上回收', vehicle:'Falcon 9', status:'动态甲板 · 开始挑战'},
-  {modelId:'superheavy', title:'塔架机械臂捕获', vehicle:'Super Heavy', status:'即将开放'},
+  {mode:'recovery',modelId:'superheavy', title:'塔架机械臂捕获', vehicle:'Super Heavy', status:'上部挂点 · 开始挑战'},
 ];
 let activeMission = null, missionResult = null;
 const freeChoice = {index:0, modelId:S.skin};
+const TOWER = {type:'tower',name:'塔架捕获 · STARBASE',g:16,fuel:160,ast:0,
+  theme:{sky:['#101b30','#517286'],accent:'#f1c777'},hint:'上部挂点对准双臂，减速进入窗口'};
+function isTower() { return activeMission?.modelId==='superheavy'; }
 function isRecovery() { return activeMission?.mode === 'recovery'; }
 function unlimitedAttempts() { return isFreeFlight() || isRecovery(); }
 function isFreeFlight() { return activeMission?.mode === 'free'; }
@@ -889,12 +892,13 @@ function padY(p, t) {
 
 /* ---------- 关卡装载 ---------- */
 function loadLevel(i) {
-  levelIdx = isRecovery() ? -1 : i; levelDef = isRecovery() ? OCEAN : LEVELS[i];
+  levelIdx = isRecovery() ? -1 : i; levelDef = isTower() ? TOWER : isRecovery() ? OCEAN : LEVELS[i];
   if (levelDef.duststorm) levelDef = { ...levelDef, duststorm:{ ...levelDef.duststorm } };
   particles = []; frags = []; banner = null; landPad = null;
   trail = []; trailT = 0;
   P = null; terrain = null; pads = []; geysers = [];
-  if (isRecovery()) {
+  if (isTower()) pads=[{cx:WORLD_W/2,x1:WORLD_W/2-16,x2:WORLD_W/2+16,y:960,w:32}];
+  else if (isRecovery()) {
     pads = [{marine:true, moving:true, w:OCEAN.deckWidth, y:980, epoch:time, m:1}];
   } else if (levelDef.type === 'terrain') {
     genTerrain(levelDef);
@@ -927,7 +931,9 @@ function spawnShip() {
   ship.spin = 0;
   ship.fuelCapacity = Math.round(levelDef.fuel * currentModel().tank);
   ship.fuel = ship.fuelCapacity;
-  if (isRecovery()) {
+  if (isTower()) {
+    ship.x=pads[0].cx+25; ship.y=pads[0].y-S.spawnH; ship.vx=-2; ship.vy=16; ship.a=0;
+  } else if (isRecovery()) {
     const deck = deckPose(pads[0],time);
     ship.x = deck.x - 74; ship.y = deck.y - S.spawnH;
     ship.vx = 9; ship.vy = 18; ship.a = 0;
@@ -952,10 +958,10 @@ function spawnShip() {
 /* 出发一关（航线图调用） */
 function launch(i) { return startMission(CAMPAIGN_MISSIONS[i]); }
 function startMission(mission, chosenModel = mission?.modelId) {
-  if (!mission || !MODEL_KEYS.includes(chosenModel)) return false;
+  if (!mission || (!MODEL_KEYS.includes(chosenModel) && !(mission.mode==='recovery' && chosenModel==='superheavy'))) return false;
   const campaign = mission.mode === 'campaign';
   const recovery = mission.mode === 'recovery';
-  if (recovery && (mission.modelId !== 'falcon9' || chosenModel !== mission.modelId)) return false;
+  if (recovery && (!RECOVERY_MISSIONS.some(m=>m.modelId===chosenModel) || chosenModel !== mission.modelId)) return false;
   if (!campaign && !recovery && (mission.mode !== 'free' || !mission.models.includes(chosenModel))) return false;
   if (campaign && chosenModel !== mission.modelId) return false;
   if (campaign && !(S.unlockAll || mission.levelIndex <= progress.unlocked)) {
@@ -1035,6 +1041,11 @@ const SHIP_MODELS = {
     draw: drawStarshipSkin
   }
 };
+const boosterHull=[[-5,-22],[5,-22],[6,-17],[6,17],[4,20],[-4,20],[-6,17],[-6,-17]];
+SHIP_MODELS.superheavy={label:'Super Heavy',dryMass:2.2,fuelMass:0.42,thrust:2.5,tank:1.45,burn:1.5,
+  turnRate:1.8,moment:2.4,torque:13,landingOffset:20,hull:boosterHull,
+  pts:[...boosterHull,[-9,-14],[9,-14]],flameY:20,flameW:4,outline:'#c7d8e2',fill:'#687c89',lights:[],
+  draw(){shipLine(-9,-14,9,-14,'#ffce74',2);shipLine(-4,-20,-4,16,'#eaf2f6',1);}};
 function currentModel(body = ship) { return SHIP_MODELS[body.modelId]; }
 function vehicleMass(body, model) {
   return model.dryMass + model.fuelMass * clamp(body.fuel / body.fuelCapacity, 0, 1);
@@ -1084,7 +1095,7 @@ function noseDir() { return { x: Math.sin(ship.a), y: -Math.cos(ship.a) }; }
 /* ---------- 环境力（引力 + 侧风/风暴周期 + 大气阻力 + 沙尘暴 + 间歇泉）
    物理与轨迹预测共用 ---------- */
 function windAt(t) {
-  if (isRecovery()) t -= pads[0].epoch;
+  if (isRecovery() && !isTower()) t -= pads[0].epoch;
   const w = levelDef.wind;
   if (!w) return 0;
   let m = 1;
@@ -1170,7 +1181,7 @@ function computePrediction() {
     shipWorldPts(sim, hull);
     const obstacle = hull.find(p => rocks.some(a => dist2(p.x,p.y,a.x,a.y) < a.r*0.72) ||
                                    spires.some(s => hitsSpire(s, p)));
-    const hit = obstacle || findContact(hull, t)?.pt;
+    const hit = obstacle || findContact(hull, t, sim)?.pt;
     if (hit) { impact = {...hit}; break; }
   }
   pred = { pts, impact };
@@ -1213,7 +1224,28 @@ function marineContact(pts,t) {
   const pt=pts.find(point => point.y>=waterY(point.x,t));
   if (pt) return {pt,water:true,deck:d};
 }
-function findContact(pts, t) {
+function lugState(b) {
+  const c=Math.cos(b.a), s=Math.sin(b.a), pad=pads[0];
+  return {x:b.x+14*s,y:b.y-14*c,dx:b.x+14*s-pad.cx,
+    gap:pad.y-b.y+14*c,vx:b.vx+14*c*b.spin,vy:b.vy+14*s*b.spin,
+    tilt:Math.atan2(s,c)*180/Math.PI};
+}
+function towerContact(pts,b) {
+  const p=pads[0], lug=lugState(b);
+  for (const pt of pts) {
+    const x=pt.x-p.cx,y=pt.y-p.y;
+    if ((x>=-65 && x<=-49 && y>=-57 && y<=108) || (x>=45 && x<=49 && y>5 && y<=106)) return {pt,reason:'撞上塔架'};
+    if (Math.abs(x)>=18 && Math.abs(x)<=49 && y>=0 && y<=5) return {pt,reason:'撞上机械臂'};
+  }
+  const pt={x:lug.x,y:lug.y};
+  if (lug.gap < -4) return {pt,reason:'错过捕获窗口'};
+  if (lug.gap>0 || lug.vy<0 || Math.abs(lug.dx)>7) return;
+  const reason=Math.abs(lug.tilt)>8?'捕获倾角过大':
+    Math.abs(lug.vx)>7 || lug.vy>14?'捕获相对速度过快':'';
+  return {pt,reason};
+}
+function findContact(pts, t, body=ship) {
+  if (isTower()) return towerContact(pts,body);
   if (isRecovery()) return marineContact(pts,t);
   if (levelDef.type === 'planetoid') {
     for (const p of pts) {
@@ -1267,6 +1299,14 @@ function hitsSpire(s, p) {
 function checkContact() {
   const contact = findContact(shipWorldPts(), time);
   if (!contact) return;
+  if (isTower()) {
+    const lug=lugState(ship), approach={slide:lug.vx,descent:lug.vy,tilt:lug.tilt};
+    if (contact.reason) { crash(contact.reason,approach); return; }
+    ship.thrusting=false;ship.flame=0;ship.vx=ship.vy=ship.spin=0;
+    setThrustSound(false);lastThrustSnd=false;
+    settleMission({landed:true,approach,fuel:Math.round(ship.fuel),startY:ship.y});
+    announce('挂点已捕获','机械臂承载中','#87e4b7',1.7);sfxLand();return;
+  }
   if (isRecovery()) { judgeRecovery(contact); return; }
   if (contact.floating && ship.vy < -3) { crash('撞上平台底部'); return; }
   judgeLanding(contact.pt, contact.normal, contact.pad);
@@ -1369,8 +1409,8 @@ function showMissionEnd() {
   document.querySelector('#freeResultScreen [data-action="recovery"]').hidden = !isRecovery();
   if (isRecovery()) {
     const a = result.approach;
-    document.getElementById('freeResultTitle').textContent = result.landed ? '海上回收成功' : '海上回收失败';
-    document.getElementById('freeResultInfo').textContent = (result.reason || '已在甲板固定') +
+    document.getElementById('freeResultTitle').textContent = (isTower()?'塔架捕获':'海上回收')+(result.landed?'成功':'失败');
+    document.getElementById('freeResultInfo').textContent = (result.reason || (isTower()?'双臂承载':'已在甲板固定')) +
       (a ? ' · 相对横移 ' + a.slide.toFixed(1) + ' · 相对下降 ' + a.descent.toFixed(1) +
       ' · 相对倾角 ' + a.tilt.toFixed(1) + '°' : '') + ' · 剩余燃料 ' + result.fuel;
     return;
@@ -1567,7 +1607,8 @@ function update(dt) {
       camFollow(dt);
       break;
     case 'landed':
-      if (landPad?.marine) rideDeck(deckPose(landPad,time));
+      if (isTower()) ship.y=missionResult.startY+3*clamp((1.8-stateT-0.2)/0.42,0,1);
+      else if (landPad?.marine) rideDeck(deckPose(landPad,time));
       else if (landPad && landPad.moving) {           // 骑着浮台/冰筏移动
         ship.x = padCX(landPad, time) + landOff;
         ship.y = padY(landPad, time) - currentModel().landingOffset;
@@ -1986,6 +2027,22 @@ function drawOcean(v) {
   ctx.restore();
 }
 function drawPads(v) {
+  if (isTower()) {
+    const p=pads[0],caught=missionResult?.landed, k=caught?clamp((1.8-stateT)/0.2,0,1):0;
+    ctx.save();ctx.translate(p.cx,p.y);
+    ctx.fillStyle='#233949';ctx.fillRect(-65,-57,16,165);
+    ctx.strokeStyle='#93aeb9';ctx.lineWidth=1.5;
+    for(let y=-57;y<99;y+=13){ctx.strokeRect(-65,y,16,13);ctx.beginPath();ctx.moveTo(-65,y);ctx.lineTo(-49,y+13);ctx.stroke();}
+    ctx.fillStyle='#263743';ctx.fillRect(-65,106,132,8);
+    ctx.fillStyle='#516875';ctx.fillRect(45,0,4,106);
+    const lug=lugState(ship);
+    for(const side of [-1,1]){
+      const tip=side*18*(1-k)+(lug.dx+side*8*Math.cos(ship.a))*k;
+      const h=k*(lug.y-p.y+side*8*Math.sin(ship.a));
+      ctx.strokeStyle='#d9ac63';ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(side*49,2);ctx.lineTo(tip,h+2);ctx.stroke();
+    }
+    ctx.restore();return;
+  }
   if (isRecovery()) { drawOcean(v); return; }
   if (levelDef.type === 'planetoid') {
     const arc = levelDef.pads[0].arc;
@@ -2463,15 +2520,17 @@ function drawHUD() {
           fr < 0.25 ? '#ff6b5e' : '#7fb0d8');
 
   let alt;
-  const marine = isRecovery() ? deckApproach(ship,deckPose(pads[0],time)) : null;
-  if (marine) alt = marine.altitude;
+  const lug=isTower()?lugState(ship):null;
+  const marine = isRecovery() && !lug ? deckApproach(ship,deckPose(pads[0],time)) : null;
+  if (lug) alt=lug.gap;
+  else if (marine) alt = marine.altitude;
   else if (levelDef.type === 'planetoid') alt = dist2(ship.x, ship.y, P.cx, P.cy) - P.R;
   else if (levelDef.type === 'float') alt = Math.max(0, ship.y - Math.min(...pads.map(p => p.y)));
   else alt = Math.max(0, heightAt(ship.x) - ship.y);
-  const vx = marine ? marine.slide : ship.vx, vy = marine ? marine.descent : ship.vy;
-  const vyDanger = alt < 300 && vy > (marine ? OCEAN.maxDescent : S.vyMax);
-  const vxDanger = Math.abs(vx) > (marine ? OCEAN.maxSlide : S.vxMax) && alt < 300;
-  hudText('ALT ' + String(Math.round(alt)).padStart(4, '0'), W-18-safeRight, H-82-hudLift, compactHUD?11:13, '#9df', 'right');
+  const vx = lug ? lug.vx : marine ? marine.slide : ship.vx, vy = lug ? lug.vy : marine ? marine.descent : ship.vy;
+  const vyDanger = alt < 300 && vy > (lug ? 14 : marine ? OCEAN.maxDescent : S.vyMax);
+  const vxDanger = Math.abs(vx) > (lug ? 7 : marine ? OCEAN.maxSlide : S.vxMax) && alt < 300;
+  hudText((lug?'挂点高差 ':'ALT ') + String(Math.round(alt)).padStart(4, '0'), W-18-safeRight, H-82-hudLift, compactHUD?11:13, '#9df', 'right');
   hudText((marine ? '相对横移 ' : 'VX ') + fmt(vx, 3), W-18-safeRight, H-60-hudLift, compactHUD?11:13, vxDanger ? '#ff4d4d' : '#9df', 'right');
   hudText((marine ? '相对下降 ' : 'VY ') + fmt(vy, 3), W-18-safeRight, H-38-hudLift, compactHUD?11:13, vyDanger ? '#ff4d4d' : '#9df', 'right');
 
@@ -2512,7 +2571,8 @@ function drawHUD() {
     else if (c >= ds.calm)
       hudText('沙尘暴预警 SANDSTORM INCOMING', W/2, headY + 40, 13, '#ffb347', 'center');
   }
-  if (marine) {
+  if(lug) hudText('偏移 '+lug.dx.toFixed(0)+' · 倾角 '+lug.tilt.toFixed(0)+'°',hudX,headY+20,12,'#ffd884');
+  else if (marine) {
     hudText('倾角 ' + marine.tilt.toFixed(0) + '°',hudR,headY+20,12,
       Math.abs(marine.tilt)>OCEAN.maxTilt ? '#ff796c' : '#b7e7eb','right');
   } else if (levelDef.drag) {
@@ -2549,7 +2609,7 @@ function drawHUD() {
         ctx.beginPath(); ctx.moveTo(12, 0); ctx.lineTo(-7, -7); ctx.lineTo(-7, 7);
         ctx.closePath(); ctx.fill();
         ctx.restore();
-        hudText(isRecovery() ? '回收船' : '×'+bestP.m, clamp(ex, 34, W-34), clamp(ey, 46, H-100) + 12, 11,
+        hudText(isTower() ? '捕获窗口' : isRecovery() ? '回收船' : '×'+bestP.m, clamp(ex, 34, W-34), clamp(ey, 46, H-100) + 12, 11,
                 levelDef.theme.accent, 'center');
         ctx.globalAlpha = 1;
       }
@@ -2562,10 +2622,11 @@ function drawBanner() {
   ctx.globalAlpha = clamp(a, 0, 1);
 
   ctx.shadowColor = banner.color; ctx.shadowBlur = 16;
-  centerText(banner.l1, H*0.43, 30, banner.color, true);
+  const bannerY=isTower() && state==='landed' ? safeTop+32 : H*0.43;
+  centerText(banner.l1, bannerY, 30, banner.color, true);
   ctx.shadowBlur = 0;
   if (banner.l2) {
-    centerText(banner.l2, H*0.43 + 34, 14, '#9db8d8');
+    centerText(banner.l2, bannerY + 34, 14, '#9db8d8');
   }
   ctx.globalAlpha = 1;
 }
@@ -2584,7 +2645,7 @@ function drawOverlays() {
     dim(0.45);
     const nameSize = Math.min(26, W*0.058);
     const hintSize = W < 420 ? 12 : 14;
-    centerText(isRecovery() ? '回收挑战 · Falcon 9' : isFreeFlight() ? '自由飞行 · ' + currentModel().label :
+    centerText(isRecovery() ? '回收挑战 · '+currentModel().label : isFreeFlight() ? '自由飞行 · ' + currentModel().label :
                'STATION ' + (levelIdx+1) + ' / ' + NLV + ' · ' + stationTitle(levelDef),
                H*0.34, Math.min(20, W*0.052), '#7fb0d8');
     centerText(levelDef.name, H*0.43, nameSize, '#e8f4ff', true);
@@ -2938,7 +2999,7 @@ function buildModeMenus() {
   for (const mission of RECOVERY_MISSIONS) {
     const available = mission.mode === 'recovery';
     const card = document.createElement(available ? 'button' : 'article');
-    if (available) { card.type = 'button'; card.dataset.action = 'sea'; }
+    if (available) { card.type = 'button'; card.dataset.action = mission.modelId; }
     card.className = 'modeCard';
     const title = document.createElement('strong');
     title.textContent = mission.title;
@@ -2947,7 +3008,7 @@ function buildModeMenus() {
     card.append(title,detail);
     if (available) {
       const brief=document.createElement('span');
-      brief.textContent='跟随船的横移与升沉，双脚落在甲板内。相对横移 ≤ ' + OCEAN.maxSlide +
+      brief.textContent=mission.modelId==='superheavy'?'将上部金色挂点降入双臂。偏移 ≤ 7，横速 ≤ 7，下降 ≤ 14，倾角 ≤ 8°。':'跟随船的横移与升沉，双脚落在甲板内。相对横移 ≤ ' + OCEAN.maxSlide +
         '，下降 ≤ ' + OCEAN.maxDescent + '，倾角 ≤ ' + OCEAN.maxTilt + '°。可无限重试。';
       card.append(brief);
     }
@@ -2956,7 +3017,7 @@ function buildModeMenus() {
   const actions = {
     campaign:gotoMap, free:gotoFreeSetup, recovery:() => enterMenu('recovery'),
     home:gotoHome, fly:() => startMission(FREE_MISSIONS[freeChoice.index],freeChoice.modelId),
-    retry:retryMission, sea:() => startMission(RECOVERY_MISSIONS[0]),
+    retry:retryMission, falcon9:() => startMission(RECOVERY_MISSIONS[0]), superheavy:() => startMission(RECOVERY_MISSIONS[1]),
   };
   for (const screen of Object.values(modeScreens)) screen.addEventListener('click', e => {
     const button = e.target.closest('button[data-mode],button[data-action]');
@@ -3257,7 +3318,7 @@ window.addEventListener('keydown', e => {
   }
   if (state === 'title')   { if (c === 'Enter' || c === 'Space') gotoMap(); return; }
   if (state === 'gameover'){ gotoMap(); return; }
-  if (state === 'landed')  { showMissionEnd(); return; }
+  if (state === 'landed')  { if (!isTower() || stateT<1.1) showMissionEnd(); return; }
   if (state === 'playing') {
     if (c === 'KeyP') { if (!e.repeat) togglePause(); return; }
     if (isPaused()) return;
@@ -3300,7 +3361,7 @@ cvs.addEventListener('pointerup', e => {
     }
     return;
   }
-  if (state === 'landed') showMissionEnd();
+  if (state === 'landed' && (!isTower() || stateT<1.1)) showMissionEnd();
   if (state === 'gameover') gotoMap();
 });
 window.addEventListener('blur', releaseAllKeys);
@@ -3483,7 +3544,7 @@ function viewportDebugText() {
   const orientation = screen.orientation;
   const standalone = matchMedia('(display-mode: standalone)').matches;
   return [
-    'Spacer · Sprint 12 海上回收',
+    'Spacer · Sprint 13 塔架捕获',
     'Git commit: ' + (commit || '当前 URL 未固定到提交'),
     'Browser: ' + navigator.userAgent,
     'Context: ' + (window.top === window ? 'top-level' : 'embedded') + (standalone ? ' · standalone' : ''),

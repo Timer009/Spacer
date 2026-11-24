@@ -715,8 +715,8 @@ async function playModes(browser,name,host) {
     await page.getByRole('button',{name:/回收挑战/}).click();
     const recovery = page.locator('#recoveryScreen');
     await recovery.getByRole('button',{name:/Falcon 9/}).waitFor();
-    await recovery.getByText('Super Heavy · 即将开放').waitFor();
-    assert.equal(await recovery.getByRole('button').count(),2);
+    await recovery.getByText('Super Heavy · 上部挂点 · 开始挑战').waitFor();
+    assert.equal(await recovery.getByRole('button').count(),3);
     await recovery.getByRole('button',{name:'返回玩法'}).click();
     await page.getByRole('button',{name:/自由飞行/}).click();
     await page.locator('#freeSetupScreen').waitFor();
@@ -788,7 +788,7 @@ async function playModes(browser,name,host) {
       }
       gotoFreeSetup();
       check(!startMission(FREE_MISSIONS[5],'starship') && state==='freeSetup','compatibility enforced at launch');
-      check(!startMission(RECOVERY_MISSIONS[1]) && state==='freeSetup','reserved challenge cannot launch');
+      check(!startMission(RECOVERY_MISSIONS[1],'classic') && state==='freeSetup','reserved challenge cannot launch');
       return {starts,failures,landings};
     });
     assert.deepEqual(totals,{starts:29,failures:29,landings:29});
@@ -896,6 +896,70 @@ async function seaRecovery(browser,name,host) {
     console.log(name+' recovery: virtual touch menu, rotate while paused, matching ship/deck velocity, six contact outcomes, moving deck attachment, retry and save isolation PASS');
   } finally { await page.close(); }
 }
+async function towerCatch(browser,name,host) {
+  const [page,errors]=await open(browser,host,'/fix?compat=1',390,844);
+  try {
+    await page.getByRole('button',{name:/回收挑战/}).click();
+    await page.locator('#recoveryScreen [data-action=superheavy]').click();
+    await page.waitForFunction(()=>game.state==='playing' && ship.modelId==='superheavy');
+    const outcome=await page.evaluate(()=>{
+      __frames.frozen=true;
+      const save=()=>JSON.stringify([score,lives,progress,stats,best,localStorage.getItem('vl_progress')]);
+      const initial=save();
+      retryMission();game.tick(1210);
+      const p=pads[0];
+      for(let i=0;i<7200 && state==='playing';i++){
+        const lug=lugState(ship), targetVx=clamp(-lug.dx*0.32,-10,10);
+        const angle=lug.gap<20?0:clamp((targetVx-ship.vx)*0.08,-0.35,0.35);
+        const error=angle-ship.a-ship.spin*Math.abs(ship.spin)/12;
+        keys.left=error< -0.012;keys.right=error>0.012;
+        keys.up=ship.vy>clamp(Math.sqrt(11*Math.max(lug.gap,0)),4,37);
+        game.tick(8);
+      }
+      if(state!=='landed') throw Error('full flight '+JSON.stringify(missionResult));
+      const approach=missionResult.approach;
+      game.tick(650);game.draw();
+      if(save()!==initial) throw Error('campaign changed');
+      return approach;
+    });
+    console.log(name+' normal spawn tower capture '+JSON.stringify(outcome));
+    await page.setViewportSize({width:844,height:390});
+    await page.evaluate(()=>{resize();cam.x=ship.x;cam.y=ship.y-10;cam.zoom=1.5;game.draw();});
+    await page.screenshot({path:path.join(evidence,name+'-tower-catch.png')});
+    const results=await page.evaluate(()=>{
+      game.tick(1900);game.draw();
+      if(state!=='freeResult') throw Error('missing result');
+      const cases=[[-55,-18,0,5,0,'撞上塔架'],[30,-18,0,5,0,'撞上机械臂'],
+        [82,18,0,5,0,'错过捕获窗口'],[0,13.99,8,4,0,'捕获相对速度过快'],
+        [0,13.99,0,16,0,'捕获相对速度过快'],[0,13.99,0,4,0.17,'捕获倾角过大']];
+      const padX=WORLD_W/2;
+      for(const [dx,vx,vy,degrees,accepted] of [[7,7,14,0,true],[7.01,0,4,0,false],
+        [0,7.01,4,0,false],[0,0,14.01,0,false],[0,0,4,8,true],[0,0,4,8.01,false]]) {
+        const angle=degrees*Math.PI/180;
+        const b={...ship,x:padX+dx-14*Math.sin(angle),y:960+14*Math.cos(angle)+0.001,a:angle,vx,vy,spin:0};
+        const hit=towerContact(shipWorldPts(b),b);
+        if(Boolean(hit && !hit.reason)!==accepted) throw Error('window boundary '+[dx,vx,vy,degrees]);
+      }
+      return cases.map(([x,y,vx,vy,a,expected])=>{
+        retryMission();game.tick(1210);const pad=pads[0];
+        game.teleport(pad.cx+x,pad.y+y,vx,vy,a);
+        releaseAllKeys();computePrediction();
+        if(!pred.impact) throw Error('missing predicted contact');
+        const forecast={...pred.impact};
+        for(let i=0;i<120 && state==='playing';i++) game.tick(8);
+        if(missionResult?.reason!==expected) throw Error(expected+' '+JSON.stringify(missionResult));
+        const live=towerContact(shipWorldPts(),ship);
+        if (!live || Math.hypot(live.pt.x-forecast.x,live.pt.y-forecast.y)>0.001) throw Error('forecast differs '+expected);
+        return expected;
+      });
+    });
+    assert.equal(results.length,6);
+    await page.evaluate(()=>{game.tick(1900);game.draw();});
+    await page.getByRole('button',{name:'再飞一次'}).click();
+    assert.equal(await page.evaluate(()=>ship.modelId+':'+state),'superheavy:levelIntro');
+    assert.deepEqual(errors,[]);
+  } finally {await page.close();}
+}
 async function performanceSample(browser,name,host) {
   const values = [];
   for (const route of ['/release','/fix']) {
@@ -953,6 +1017,7 @@ async function performanceSample(browser,name,host) {
         await vehicleControls(browser,name,host);
         await playModes(browser,name,host);
         await seaRecovery(browser,name,host);
+        await towerCatch(browser,name,host);
         if (name === 'chromium' || name === 'webkit') await performanceSample(browser,name,host);
       } finally { await browser.close(); }
     }
