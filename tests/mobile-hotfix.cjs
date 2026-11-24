@@ -892,6 +892,15 @@ async function seaRecovery(browser,name,host) {
     await page.setViewportSize({width:568,height:320});
     await page.evaluate(() => { resize(); game.draw(); });
     await page.screenshot({path:path.join(evidence,name+'-sea-mobile.png')});
+    for (const [phase,age] of [['rising',0],['crest',Math.PI/1.64],['falling',Math.PI/0.82],['trough',3*Math.PI/1.64]]) {
+      await page.evaluate(age=>{
+        time=pads[0].epoch+age;
+        const d=deckPose(pads[0],time);
+        game.teleport(d.x-18,d.y-52,d.vx,d.vy+2,d.angle);
+        cam.x=d.x;cam.y=d.y-24;cam.zoom=1.65;predictionDue=-Infinity;game.draw();
+      },age);
+      await page.screenshot({path:path.join(evidence,name+'-water-'+phase+'.png')});
+    }
     assert.deepEqual(errors,[]);
     console.log(name+' recovery: virtual touch menu, rotate while paused, matching ship/deck velocity, six contact outcomes, moving deck attachment, retry and save isolation PASS');
   } finally { await page.close(); }

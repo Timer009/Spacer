@@ -147,7 +147,7 @@
     <h1 id="gameTitle">VECTOR LANDER</h1>
     <p>矢量着陆 · 选择玩法</p>
     <div class="modeCards">
-      <button type="button" class="modeCard" data-mode="campaign"><strong>太阳系战役</strong><span>十站航线 · 星级与解锁</span></button>
+      <button type="button" class="modeCard" data-mode="campaign"><strong>太阳系战役</strong><span>十站航线 · 平台基础分 400 × 标示倍率</span></button>
       <button type="button" class="modeCard" data-mode="free"><strong>自由飞行</strong><span>自选场景和飞船 · 无限重试</span></button>
       <button type="button" class="modeCard" data-mode="recovery"><strong>回收挑战</strong><span>移动甲板着陆与双臂捕获</span></button>
     </div>
@@ -1356,7 +1356,7 @@ function judgeLanding(pt, normal, pad) {
     const starTxt = '★'.repeat(starN) + '☆'.repeat(3 - starN);
     announce(isFreeFlight() ? '着陆成功 SOFT LANDING' : '着陆成功 SOFT LANDING  +' + gained,
              isFreeFlight() ? '剩余燃料 ' + missionResult.fuel :
-               starTxt + ' · 燃料加成 +' + fuelBonus + ' · 平台 ×' + pad.m + ' · 剩余燃料 ' + missionResult.fuel,
+               starTxt + ' · 燃料加成 +' + fuelBonus + ' · 得分×' + pad.m + ' · 剩余燃料 ' + missionResult.fuel,
              '#7dffb0', 2.0);
     sfxLand(); vib(30);
     spawnDust(ship.x, ship.y + 8, 20);
@@ -1860,12 +1860,12 @@ function drawChevron(x, y, v) {
 function drawMultiplier(left, top, value, v) {
   const u = 1/v.z;
   ctx.save();
-  ctx.fillStyle = '#171922'; ctx.fillRect(left, top, 24*u, 12*u);
+  ctx.fillStyle = '#171922'; ctx.fillRect(left, top, 46*u, 12*u);
   ctx.strokeStyle = '#b49d62'; ctx.lineWidth = u;
-  ctx.strokeRect(left, top, 24*u, 12*u);
+  ctx.strokeRect(left, top, 46*u, 12*u);
   ctx.fillStyle = '#ffe39a'; ctx.font = `${10*u}px monospace`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('×' + value, left + 12*u, top + 6*u);
+  ctx.fillText('得分×' + value, left + 23*u, top + 6*u);
   ctx.restore();
 }
 function drawLaunchPad(cx, groundY, w, v, p) {     // 地面发射台：台板+着陆圈+桁架塔
@@ -1976,7 +1976,7 @@ function drawSkyDock(cx, y, w, v, p) {             // 木星：天空坞站
   // ×N 涂装（画在机舱面上）
   ctx.fillStyle = '#ffd75e'; ctx.font = `${Math.round(10/v.z)}px 'Courier New',monospace`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('×' + p.m, cx, y + 8/v.z);
+  ctx.fillText('得分×' + p.m, cx, y + 8/v.z);
   drawChevron(cx, y - 52/v.z, v);
 }
 function drawOcean(v) {
@@ -1997,22 +1997,13 @@ function drawOcean(v) {
   }
   ctx.restore();
   if (pad.y+35<v.t || pad.y-20>v.b) return;
-  // The foreground crest is sampled from the same waterline used by collision.
-  ctx.beginPath();
-  const step=8/v.z;
-  ctx.moveTo(v.l,waterY(v.l,time));
-  for (let x=v.l+step;x<v.r+step;x+=step) ctx.lineTo(x,waterY(x,time));
-  ctx.strokeStyle='#9ed4d4'; ctx.lineWidth=2/v.z; ctx.stroke();
-  ctx.lineTo(v.r+step,v.b+50); ctx.lineTo(v.l,v.b+50);
-  ctx.closePath(); ctx.fillStyle='#175265'; ctx.fill();
-
   ctx.save();
   ctx.translate(deck.x,deck.y); ctx.rotate(deck.angle);
   const half=pad.w/2;
   ctx.beginPath(); ctx.moveTo(-half,0); ctx.lineTo(half,0); ctx.lineTo(half,10);
-  ctx.lineTo(half-9,19); ctx.lineTo(-half+8,19); ctx.lineTo(-half,12); ctx.closePath();
+  ctx.lineTo(half-5,35); ctx.lineTo(half-14,48); ctx.lineTo(-half+14,48); ctx.lineTo(-half+5,35); ctx.lineTo(-half,12); ctx.closePath();
   ctx.fillStyle='#243749'; ctx.fill();
-  ctx.fillStyle='#a04f3d'; ctx.fillRect(-half+10,14,pad.w-20,4);
+  ctx.fillStyle='#a04f3d'; ctx.fillRect(-half+6,14,pad.w-12,20);
   ctx.fillStyle='#b6c6ca'; ctx.fillRect(-half,0,pad.w,3);
   ctx.fillStyle='#e4bb65'; ctx.fillRect(-14,0,28,2);
   for (const side of [-1,1]) {
@@ -2025,6 +2016,14 @@ function drawOcean(v) {
   ctx.fillStyle='#d7e8ec'; ctx.font='7px monospace'; ctx.textAlign='center';
   ctx.fillText('F9   •   01',0,12);
   ctx.restore();
+  // The foreground crest is sampled from the same waterline used by collision.
+  ctx.beginPath();
+  const step=8/v.z;
+  ctx.moveTo(v.l,waterY(v.l,time));
+  for (let x=v.l+step;x<v.r+step;x+=step) ctx.lineTo(x,waterY(x,time));
+  ctx.strokeStyle='#9ed4d4'; ctx.lineWidth=2/v.z; ctx.stroke();
+  ctx.lineTo(v.r+step,v.b+50); ctx.lineTo(v.l,v.b+50);
+  ctx.closePath(); ctx.fillStyle='rgba(23,82,101,.94)'; ctx.fill();
 }
 function drawPads(v) {
   if (isTower()) {
@@ -2064,7 +2063,7 @@ function drawPads(v) {
     // ×5 涂装（弧顶上方）+ 径向小型信标塔
     ctx.fillStyle = '#ffd75e'; ctx.font = `${Math.round(11/v.z)}px 'Courier New',monospace`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('×5', P.cx, P.cy - P.R + 14/v.z);
+    ctx.fillText('得分×' + levelDef.pads[0].m, P.cx, P.cy - P.R + 14/v.z);
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     const ga = -Math.PI/2 + arc, dxr = Math.cos(ga), dyr = Math.sin(ga);
     const bx = P.cx + dxr*P.R, by = P.cy + dyr*P.R;
@@ -2609,7 +2608,7 @@ function drawHUD() {
         ctx.beginPath(); ctx.moveTo(12, 0); ctx.lineTo(-7, -7); ctx.lineTo(-7, 7);
         ctx.closePath(); ctx.fill();
         ctx.restore();
-        hudText(isTower() ? '捕获窗口' : isRecovery() ? '回收船' : '×'+bestP.m, clamp(ex, 34, W-34), clamp(ey, 46, H-100) + 12, 11,
+        hudText(isTower() ? '捕获窗口' : isRecovery() ? '回收船' : '得分×'+bestP.m, clamp(ex, 34, W-34), clamp(ey, 46, H-100) + 12, 11,
                 levelDef.theme.accent, 'center');
         ctx.globalAlpha = 1;
       }
