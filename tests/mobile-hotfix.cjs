@@ -988,7 +988,7 @@ async function settlementInput(browser,name,host) {
           settleMission({landed,gained:400,stars:1,fuel:60,startY:ship.y});
           if(keys.left||keys.up||settlementReady()) throw Error('held input survived settlement');
           if(mission.mode==='campaign'&&!landed) state='gameover';
-          else showMissionEnd();
+          else if(mission.mode!=='campaign') showMissionEnd();
           const expected=state;
           const target=state==='freeResult'?document.querySelector('[data-action=retry]'):cvs;
           for(let i=0;i<5;i++) target.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,detail:1}));
