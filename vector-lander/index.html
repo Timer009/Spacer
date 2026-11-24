@@ -3281,6 +3281,7 @@ const touchControls = [];
 const keyboard = new Set();
 const activePointers = new Set();
 const heldFlightCodes = new Set();
+const blockedFlightCodes = new Set();
 let settlementUntil = 0;
 let settlementGesture = null;
 function settlementScreen() {
@@ -3290,6 +3291,7 @@ function settlementReady() {
   return performance.now() >= settlementUntil && !activePointers.size && !heldFlightCodes.size;
 }
 function lockSettlementInput() {
+  for (const code of heldFlightCodes) blockedFlightCodes.add(code);
   settlementUntil = performance.now() + 500;
   settlementGesture = null;
   cancelViewportInput();
@@ -3312,7 +3314,7 @@ window.addEventListener('click', e => {
   settlementGesture=null;
   if (!accept) { e.preventDefault(); e.stopImmediatePropagation(); }
 }, true);
-window.addEventListener('blur', () => { activePointers.clear(); heldFlightCodes.clear(); settlementGesture=null; });
+window.addEventListener('blur', () => { activePointers.clear(); heldFlightCodes.clear(); blockedFlightCodes.clear(); settlementGesture=null; });
 const controlCodes = {left:['ArrowLeft','KeyA'], right:['ArrowRight','KeyD'], up:['ArrowUp','KeyW','Space']};
 function syncKeys() {
   for (const control of touchControls)
@@ -3333,6 +3335,7 @@ function releaseAllKeys() {
 window.addEventListener('keydown', e => {
   audioInit();
   const c = e.code;
+  if (blockedFlightCodes.has(c)) { e.preventDefault(); return; }
   if (!settlementScreen() && Object.values(controlCodes).some(codes=>codes.includes(c))) heldFlightCodes.add(c);
   if (settlementScreen() && (e.repeat || !settlementReady())) { e.preventDefault(); return; }
   if (c === 'Tab' || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -3375,6 +3378,7 @@ window.addEventListener('keydown', e => {
   }
 });
 window.addEventListener('keyup', e => {
+  blockedFlightCodes.delete(e.code);
   heldFlightCodes.delete(e.code);
   keyboard.delete(e.code);
   syncKeys();
