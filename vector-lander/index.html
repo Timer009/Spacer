@@ -74,6 +74,13 @@
     -webkit-touch-callout:none;user-select:none;
     font:13px 'Courier New','Microsoft YaHei',monospace}
   .virtual-landscape #panel,.virtual-landscape .modeScreen{touch-action:none;overscroll-behavior:contain}
+  #titleScreen{bottom:calc(34px + var(--safe-b))}
+  #menuVersion{position:absolute;left:calc(16px + var(--safe-l));bottom:calc(8px + var(--safe-b));
+    color:#aac1d7;font:12px monospace;pointer-events:none}
+  body.rotate-hint #menuVersion{visibility:hidden}
+  #buildDetails{color:#bfe0ff;white-space:pre-line;margin:8px 0;overflow-wrap:anywhere}
+  #buildCopyField{width:100%;box-sizing:border-box;color:inherit;background:#04060e}
+  #buildCopyField,#buildCopyField:focus{user-select:text;-webkit-user-select:text;-webkit-touch-callout:default}
   #panelTitle{color:#e8f4ff;margin-bottom:8px;font-weight:bold}
   .prow{margin:8px 0}
   .prow label{display:flex;justify-content:space-between;margin-bottom:3px;color:#9db8d8}
@@ -155,6 +162,7 @@
 <button type="button" class="iconBtn" id="statsBtn" aria-label="航行统计"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M7 16v-5m5 5V7m5 9V4"/></svg></button>
 <button type="button" class="iconBtn" id="pauseBtn" aria-label="暂停"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14M15 5v14"/></svg></button>
 <button type="button" class="iconBtn" id="homeBtn" aria-label="返回玩法" hidden>玩法</button>
+<output id="menuVersion" hidden></output>
 <section class="modeScreen" id="titleScreen" aria-labelledby="gameTitle" hidden>
   <div class="modeContent">
     <h1 id="gameTitle">VECTOR LANDER</h1>
@@ -226,6 +234,10 @@
     <output id="directionStatus" class="directionStatus" aria-live="polite"></output>
   </fieldset>
   <div id="panelRows"></div>
+  <div id="buildDetails"></div>
+  <button id="copyBuild" class="skinBtn" type="button">复制版本信息</button>
+  <span id="buildCopyStatus" role="status"></span>
+  <textarea id="buildCopyField" aria-label="版本信息" readonly hidden></textarea>
   <div id="panelBtns">
     <button id="btnReset">恢复默认</button>
     <button id="btnClose">关闭 (G)</button>
@@ -3470,14 +3482,14 @@ for (const id of ['cv', 'btnL', 'btnR', 'btnT', 'gear', 'statsBtn'])
   document.getElementById(id).addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('gesturestart', e => e.preventDefault());
 document.addEventListener('selectstart', e => {
-  if (!debugEnabled || !debugPanel.contains(e.target)) e.preventDefault();
+  if (e.target!==buildCopyField && (!debugEnabled || !debugPanel.contains(e.target))) e.preventDefault();
 });
 document.addEventListener('dragstart', e => e.preventDefault());
 document.addEventListener('contextmenu', e => {
-  if (!debugEnabled || !debugPanel.contains(e.target)) e.preventDefault();
+  if (e.target!==buildCopyField && (!debugEnabled || !debugPanel.contains(e.target))) e.preventDefault();
 }, true);
 document.addEventListener('selectionchange', () => {
-  if (debugEnabled && debugPanel.contains(document.activeElement)) return;
+  if (document.activeElement===buildCopyField || (debugEnabled && debugPanel.contains(document.activeElement))) return;
   const s = document.getSelection();
   if (s && s.rangeCount && !s.isCollapsed) s.removeAllRanges();
 });
@@ -3503,6 +3515,32 @@ function frame(now) {
 }
 
 /* ---------- 渲染入口 ---------- */
+const BUILD = Object.freeze({
+  version:'v2.0.13-rc.5',
+  number:'2.0.13.5',
+  builtAt:'2026-11-24T12:06:24Z',
+  channel:'候选预览',
+});
+const menuVersion = document.getElementById('menuVersion');
+menuVersion.textContent = BUILD.version;
+const buildInfo = ['版本 '+BUILD.version, '构建编号 '+BUILD.number,
+  '构建时间 '+BUILD.builtAt+' (UTC)', '发布渠道 '+BUILD.channel].join('\n');
+document.getElementById('buildDetails').textContent = buildInfo;
+const buildCopyField = document.getElementById('buildCopyField');
+document.getElementById('copyBuild').addEventListener('click', async () => {
+  const status = document.getElementById('buildCopyStatus');
+  try {
+    await navigator.clipboard.writeText(buildInfo);
+    buildCopyField.hidden = true;
+    status.textContent = '已复制';
+  } catch {
+    buildCopyField.value = buildInfo;
+    buildCopyField.hidden = false;
+    buildCopyField.focus();
+    buildCopyField.select();
+    status.textContent = '请使用系统复制';
+  }
+});
 let shownModeScreen = null;
 function syncModeScreens() {
   const next = modeScreens[state] ?? null;
@@ -3515,6 +3553,7 @@ function syncModeScreens() {
     const blocked = panelOpen || document.body.classList.contains('rotate-hint');
     if (next.inert !== blocked) next.inert = blocked;
   }
+  menuVersion.hidden = state !== 'title' || panelOpen;
   homeBtn.hidden = state !== 'map' || panelOpen;
   missionActions.hidden = !panelOpen || !activeMission;
   retryFreeBtn.hidden = !unlimitedAttempts();
@@ -3616,7 +3655,7 @@ function viewportDebugText() {
   const orientation = screen.orientation;
   const standalone = matchMedia('(display-mode: standalone)').matches;
   return [
-    'Spacer · Sprint 13 塔架捕获',
+    'Spacer · '+BUILD.version+' · '+BUILD.number,
     'Git commit: ' + (commit || '当前 URL 未固定到提交'),
     'Browser: ' + navigator.userAgent,
     'Context: ' + (window.top === window ? 'top-level' : 'embedded') + (standalone ? ' · standalone' : ''),
