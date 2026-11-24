@@ -34,14 +34,21 @@ function read() {
   const safe = getComputedStyle(document.getElementById('insets'));
   const orientation = screen.orientation;
   return [
-    'Spacer · SPACER-SPRINT-09-HOTFIX-01',
+    'Spacer · SPACER-SPRINT-09-HOTFIX-02',
+    'Git commit: ' + (location.pathname.match(/(?:^|\/)([0-9a-f]{40})(?:\/|$)/i)?.[1] || '当前 URL 未固定到提交'),
     'Browser: ' + navigator.userAgent,
     'Context: ' + (window.top === window ? 'top-level' : 'embedded'),
     dimensions(),
+    'document container: ' + document.documentElement.clientWidth + '×' + document.documentElement.clientHeight,
     'screen: ' + screen.width + '×' + screen.height + ' · DPR ' + devicePixelRatio,
     'orientation: ' + (orientation ? orientation.type + ' ' + orientation.angle + '°' : 'unavailable') +
       ' · legacy angle ' + (window.orientation ?? 'unavailable'),
     'matchMedia: ' + (landscape.matches ? 'landscape' : 'portrait'),
+    'API: ResizeObserver ' + (typeof ResizeObserver === 'function') +
+      ' · requestFullscreen ' + (typeof document.documentElement.requestFullscreen === 'function') +
+      ' · fullscreenEnabled ' + (document.fullscreenEnabled ?? 'unavailable') +
+      ' · orientation.lock ' + (typeof orientation?.lock === 'function') +
+      ' · fullscreen policy ' + ((document.permissionsPolicy || document.featurePolicy)?.allowsFeature?.('fullscreen') ?? 'unknown'),
     'safe area: ' + [safe.paddingTop, safe.paddingRight, safe.paddingBottom, safe.paddingLeft].join(' / '),
     'Recent events:', ...entries,
   ].join('\n');
@@ -63,6 +70,14 @@ listen(visual, 'resize', 'visualViewport.resize');
 listen(visual, 'scroll', 'visualViewport.scroll');
 listen(screen.orientation, 'change', 'screen.orientation.change');
 listen(landscape, 'change', 'matchMedia.orientation');
+if (typeof ResizeObserver === 'function') {
+  const observer = new ResizeObserver(() => {
+    entries.unshift(Math.round(performance.now()) + 'ms ResizeObserver.container · ' + dimensions());
+    entries.length = Math.min(12, entries.length);
+    if (document.activeElement !== field) field.value = read();
+  });
+  observer.observe(document.documentElement);
+}
 field.addEventListener('blur', () => { field.value = read(); });
 field.value = read();
 document.getElementById('copy').addEventListener('click', async () => {

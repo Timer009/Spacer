@@ -4,11 +4,12 @@ const fs = require('node:fs');
 const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
-const { chromium, webkit } = require(process.env.SPACER_TEST_PLAYWRIGHT || 'playwright');
+const { chromium, webkit, firefox } = require(process.env.SPACER_TEST_PLAYWRIGHT || 'playwright');
 
 const root = path.resolve(__dirname, '..');
 const evidence = process.env.SPACER_EVIDENCE_DIR || fs.mkdtempSync(path.join(os.tmpdir(), 'spacer-hotfix-'));
 const base = execFileSync('git', ['-C', root, 'show', 'a10a463:vector-lander/index.html']);
+const hotfix01 = execFileSync('git', ['-C', root, 'show', 'b97c0c5:vector-lander/index.html']);
 const html = fs.readFileSync(path.join(root, 'vector-lander/index.html'));
 const probe = fs.readFileSync(path.join(root, 'vector-lander/orientation-check.html'));
 const profiles = [
@@ -19,7 +20,8 @@ fs.mkdirSync(evidence, {recursive:true});
 
 function serve() {
   const server = http.createServer((req, res) => {
-    const body = {'/base':base, '/fix':html, '/orientation-check':probe}[new URL(req.url, 'http://localhost').pathname];
+    const iframe = '<iframe id="embedded" src="/fix?debug=1" allow="fullscreen \'none\'" sandbox="allow-scripts allow-same-origin" style="display:block;width:320px;height:568px;border:0"></iframe>';
+    const body = {'/base':base, '/hotfix01':hotfix01, '/fix':html, '/orientation-check':probe, '/embedded':iframe}[new URL(req.url, 'http://localhost').pathname];
     if (!body) { res.writeHead(404); res.end(); return; }
     res.writeHead(200, {'Content-Type':'text/html; charset=utf-8', 'Cache-Control':'no-store'});
     res.end(body);
@@ -49,7 +51,8 @@ function instrument() {
   };
 }
 async function open(browser, host, url, w, h, mobile=true, init=instrument, frozen=false) {
-  const page = await browser.newPage({viewport:{width:w,height:h}, isMobile:mobile, hasTouch:mobile, deviceScaleFactor:mobile ? 2 : 1});
+  const page = await browser.newPage({viewport:{width:w,height:h},
+    isMobile:mobile && browser.browserType().name() !== 'firefox', hasTouch:mobile, deviceScaleFactor:mobile ? 2 : 1});
   page.setDefaultTimeout(7000);
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -97,7 +100,7 @@ const landscapeSafe = [0,47,21,47];
 const portraitSafe = [47,0,34,0];
 
 async function input(page, name, rects) {
-  if (name === 'chromium') {
+  if (name === 'chromium' || name === 'edge') {
     const session = await page.context().newCDPSession(page);
     const points = [rects[2],rects[4]].map(({x,y,width,height},i) => ({x:x+width/2,y:y+height/2,id:i+1}));
     await session.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:points});
@@ -302,9 +305,162 @@ async function viewportSources(browser,name,host) {
   } finally { await check.close(); }
   console.log(name+' geometry: baseline follows native window rotation but stays 390px with VV-only change; hotfix follows both sources, address height/offset, no-API fallback and standalone probe PASS');
 }
+async function compatibleLandscape(browser,name,host) {
+  const [page,errors] = await open(browser,host,'/fix?debug=1',390,844);
+  const nativeCalls = () => window.__nativeCalls;
+  try {
+    await page.evaluate(() => {
+      window.__nativeCalls = [];
+      Object.defineProperty(document,'fullscreenEnabled',{configurable:true,value:true});
+      document.documentElement.requestFullscreen = async () => {
+        __nativeCalls.push('fullscreen');
+        throw new DOMException('test rejection','NotAllowedError');
+      };
+      Object.defineProperty(screen,'orientation',{configurable:true,value:{
+        type:'portrait-primary',angle:0,
+        lock:async mode => { __nativeCalls.push(mode); throw new DOMException('test rejection','SecurityError'); },
+      }});
+    });
+    const hint = page.locator('#rotateHint');
+    if (await hint.isVisible()) await page.locator('#rotateTry').click();
+    else {
+      await page.locator('#gear').click();
+      await page.locator('#nativeLandscape').click();
+    }
+    await page.waitForFunction(() => nativeStatus.includes('SecurityError'));
+    assert.deepEqual(await page.evaluate(nativeCalls),['fullscreen','landscape']);
+    await safeArea(page,[47,11,34,7]);
+    if (await hint.isVisible()) await page.locator('#rotateCompat').click();
+    else await page.locator('[data-direction="compatible"]').click();
+    await page.waitForFunction(() => virtualLandscape && W === 844 && H === 390);
+    assert.deepEqual(await page.evaluate(() => [safeTop,safeRight,safeBottom,safeLeft]),[11,34,7,47]);
+    assert.deepEqual(await page.evaluate(() => [cvs.width,cvs.height]),[1688,780]);
+    await sizeVirtual(page,390,844);
+    if (await page.locator('#panel').isVisible()) await page.locator('#btnClose').click();
+    await page.mouse.click(195,422);
+    await page.waitForFunction(() => game.state === 'map');
+    await page.screenshot({path:path.join(evidence,name+'-virtual-map.png')});
+    // Both the inverse rotation and a scaled container must map to the first station.
+    await page.locator('#viewportHost').evaluate(el => {
+      el.style.transformOrigin='0 0';
+      el.style.transform='scale(.9)';
+    });
+    const mapped = await page.evaluate(() => {
+      const {x,y} = mapNodePos(0);
+      const b = cvs.getBoundingClientRect();
+      return {x:b.right-y*b.width/H,y:b.top+x*b.height/W};
+    });
+    if (name === 'firefox') await page.mouse.click(mapped.x,mapped.y);
+    else {
+      await page.touchscreen.tap(mapped.x,mapped.y);
+      assert.equal(await page.evaluate(() => game.state),'map');
+      await page.touchscreen.tap(mapped.x,mapped.y);
+    }
+    await page.waitForFunction(() => game.state === 'levelIntro');
+    await page.locator('#viewportHost').evaluate(el => { el.style.transform=''; });
+    await page.waitForFunction(() => game.state === 'playing');
+    const rects = await visibleControlBoxes(page,390,844,[47,11,34,7]);
+    for (const r of rects) {
+      assert.ok(await page.evaluate(({x,y,width,height}) =>
+        Boolean(document.elementFromPoint(x+width/2,y+height/2)?.closest('button.iconBtn')),r));
+    }
+    const before = await page.evaluate(() => game.ship.fuel);
+    const end = await input(page,name,rects);
+    await page.waitForFunction(() => document.querySelector('#btnL.active') && document.querySelector('#btnT.active'));
+    await page.waitForFunction(fuel => game.ship.fuel < fuel,before);
+    await page.screenshot({path:path.join(evidence,name+'-virtual-flight.png')});
+    await page.setViewportSize({width:844,height:390});
+    await size(page,844,390);
+    await page.waitForFunction(() => !virtualLandscape && !document.querySelector('.tbtn.active'));
+    await end();
+    await page.locator('#pauseBtn').click();
+    await page.waitForFunction(() => manualPaused);
+    const paused = await page.evaluate(ship);
+    await page.locator('#gear').click();
+    await page.locator('[data-direction="portrait"]').click();
+    await size(page,293,390);
+    assert.equal(await page.locator('[data-direction="portrait"]').getAttribute('aria-pressed'),'true');
+    await page.locator('[data-direction="auto"]').click();
+    await size(page,844,390);
+    assert.equal(await page.locator('[data-direction="auto"]').getAttribute('aria-pressed'),'true');
+    await page.locator('#btnClose').click();
+    assert.deepEqual(await page.evaluate(ship),paused);
+    assert.deepEqual(await page.evaluate(nativeCalls),['fullscreen','landscape']);
+    await page.locator('#viewportDebug summary').click();
+    await page.waitForFunction(() => document.getElementById('viewportDetails').value.includes('SecurityError'));
+    await page.screenshot({path:path.join(evidence,name+'-direction-debug.png')});
+    assert.deepEqual(errors,[]);
+  } finally { await page.close(); }
+  console.log(name+' compatible: rejected native request, virtual canvas/DPR, rotated insets, scaled map, controls/dual touch, native transition and mode exit preserve state PASS');
+}
+async function sizeVirtual(page,width,height) {
+  await page.waitForFunction(([w,h]) => {
+    const r = cvs.getBoundingClientRect();
+    return r.width===w && r.height===h && r.left===0 && r.top===0;
+  }, [width,height]);
+}
+async function containerAndNative(browser,name,host) {
+  const [page,errors] = await open(browser,host,'/fix?debug=1',390,844);
+  try {
+    await page.locator('#viewportHost').evaluate(el => { el.style.maxWidth='320px'; el.style.maxHeight='568px'; });
+    await size(page,320,568);
+    assert.deepEqual(await page.evaluate(() => [innerWidth,innerHeight,hostW,hostH]),[390,844,320,568]);
+    await page.locator('#viewportHost').evaluate(el => { el.style.maxHeight='280px'; });
+    await size(page,320,280);
+    assert.equal(await page.locator('#rotateHint').isVisible(),false);
+    await page.evaluate(() => {
+      window.__nativeCalls=[];
+      let full=null;
+      Object.defineProperty(document,'fullscreenEnabled',{configurable:true,value:true});
+      Object.defineProperty(document,'fullscreenElement',{configurable:true,get:()=>full});
+      document.documentElement.requestFullscreen=async () => {
+        __nativeCalls.push('fullscreen'); full=document.documentElement;
+        document.dispatchEvent(new Event('fullscreenchange'));
+      };
+      document.exitFullscreen=async () => {
+        __nativeCalls.push('exit'); full=null;
+        document.dispatchEvent(new Event('fullscreenchange'));
+      };
+      Object.defineProperty(screen,'orientation',{configurable:true,value:{
+        lock:async mode => { __nativeCalls.push(mode); },
+        unlock:() => { __nativeCalls.push('unlock'); },
+      }});
+    });
+    await page.locator('#gear').click();
+    await page.locator('#nativeLandscape').click();
+    await page.getByRole('button',{name:'退出原生全屏横屏'}).waitFor();
+    await page.getByRole('button',{name:'退出原生全屏横屏'}).click();
+    await page.getByRole('button',{name:'尝试原生全屏横屏'}).filter({visible:true}).waitFor();
+    assert.deepEqual(await page.evaluate(() => __nativeCalls),['fullscreen','landscape','unlock','exit']);
+    await page.evaluate(() => {
+      Object.defineProperty(document,'fullscreenEnabled',{configurable:true,value:false});
+      Object.defineProperty(screen,'orientation',{configurable:true,value:undefined});
+    });
+    await page.locator('#nativeLandscape').click();
+    await page.waitForFunction(() => nativeStatus.includes('orientation.lock unavailable'));
+    assert.deepEqual(await page.evaluate(() => __nativeCalls),['fullscreen','landscape','unlock','exit']);
+    assert.deepEqual(errors,[]);
+  } finally { await page.close(); }
+  const embedded = await browser.newPage({viewport:{width:800,height:650}});
+  try {
+    await embedded.goto(host+'/embedded');
+    const frame = embedded.frameLocator('#embedded');
+    const canvas = frame.locator('#cv');
+    assert.equal(await canvas.evaluate(el => el.clientWidth),320);
+    if (name==='chromium' || name==='edge') assert.equal(await canvas.evaluate(() => document.fullscreenEnabled),false);
+    await frame.locator('#viewportDebug summary').click();
+    await embedded.waitForFunction(() =>
+      document.querySelector('#embedded').contentDocument.getElementById('viewportDetails').value.includes('Context: embedded'));
+    await embedded.locator('#embedded').evaluate(el => {
+      el.style.width='568px'; el.style.height='320px';
+    });
+    await embedded.waitForFunction(() => document.querySelector('#embedded').contentDocument.querySelector('#cv').clientWidth === 568);
+  } finally { await embedded.close(); }
+  console.log(name+' container: ResizeObserver-only size changes, native success/exit capability stubs, iframe sizing/policy diagnostic PASS');
+}
 async function regression(browser,name,host) {
   const comparison = [];
-  for (const route of ['/base','/fix']) {
+  for (const route of ['/hotfix01','/fix']) {
     const [page,errors] = await open(browser,host,route,568,320,true,instrument,true);
     try {
       const result = await page.evaluate(() => {
@@ -395,7 +551,7 @@ async function regression(browser,name,host) {
 }
 async function performanceSample(browser,name,host) {
   const values = [];
-  for (const route of ['/base','/fix']) {
+  for (const route of ['/hotfix01','/fix']) {
     const [page,errors] = await open(browser,host,route,844,390);
     try {
       await page.evaluate(() => { game.jump(9); __frames.times.length=0; });
@@ -417,21 +573,31 @@ async function performanceSample(browser,name,host) {
   try {
     console.log('Screenshots: '+evidence);
     const host = 'http://127.0.0.1:'+server.address().port;
-    const engines = [['chromium',chromium,{executablePath:process.env.SPACER_TEST_CHROME}],['webkit',webkit,{}]];
+    const engines = [
+      ['chromium',chromium,{executablePath:process.env.SPACER_TEST_CHROME}],
+      ['webkit',webkit,{}],
+      ['firefox',firefox,{}],
+    ];
+    if (process.env.SPACER_TEST_EDGE) engines.push(['edge',chromium,{executablePath:process.env.SPACER_TEST_EDGE}]);
     for (const [name,engine,options] of engines) {
       if (process.argv[2] && process.argv[2] !== name) continue;
       const browser = await engine.launch({headless:true,...options});
       try {
         console.log(name+' '+browser.version());
-        await viewportSources(browser,name,host);
-        for (const setup of profiles) {
-          await dynamic(browser,name,host,setup,setup[0]===390);
-          console.log(name+' dynamic '+setup[0]+'x'+setup[1]+' ↔ '+setup[2]+'x'+setup[3]+' PASS');
+        if (name !== 'firefox') {
+          await viewportSources(browser,name,host);
+          const sizes = name === 'edge' ? profiles.filter(setup=>[320,390].includes(setup[0])) : profiles;
+          for (const setup of sizes) {
+            await dynamic(browser,name,host,setup,setup[0]===390);
+            console.log(name+' dynamic '+setup[0]+'x'+setup[1]+' ↔ '+setup[2]+'x'+setup[3]+' PASS');
+          }
+          await launchLandscape(browser,name,host);
+          console.log(name+' landscape-first and debug clipboard fallback PASS');
         }
-        await launchLandscape(browser,name,host);
-        console.log(name+' landscape-first and debug clipboard fallback PASS');
+        await containerAndNative(browser,name,host);
+        await compatibleLandscape(browser,name,host);
         await regression(browser,name,host);
-        await performanceSample(browser,name,host);
+        if (name === 'chromium' || name === 'webkit') await performanceSample(browser,name,host);
       } finally { await browser.close(); }
     }
   } finally { server.close(); }

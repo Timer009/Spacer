@@ -12,9 +12,12 @@
   :root{--safe-t:env(safe-area-inset-top, 0px);--safe-b:env(safe-area-inset-bottom, 0px);--safe-l:env(safe-area-inset-left, 0px);--safe-r:env(safe-area-inset-right, 0px)}
   html,body{margin:0;padding:0;height:100%;background:#04060e;overflow:hidden;
     overscroll-behavior:none;-webkit-tap-highlight-color:transparent;
+    -webkit-text-size-adjust:100%;text-size-adjust:100%;
     -webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
   body,body *{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
-  #gameViewport{position:fixed;inset:0;overflow:hidden}
+  #viewportHost{position:fixed;inset:0;overflow:hidden}
+  #gameViewport{position:absolute;inset:0;overflow:hidden;transform-origin:0 0}
+  #gameViewport.virtual-landscape{transform:translateX(var(--host-width)) rotate(90deg)}
   #cv{position:absolute;inset:0;display:block;width:100%;height:100%;cursor:crosshair;touch-action:none;
     -webkit-touch-callout:none;user-select:none}
   #safeArea{position:absolute;visibility:hidden;pointer-events:none;
@@ -44,6 +47,8 @@
     font:14px 'Courier New','Microsoft YaHei',monospace;
     -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
   body.rotate-hint #rotateHint{display:flex}
+  .compact-hint #rotateHint{gap:6px;justify-content:safe center}
+  .compact-hint .rotPhone{display:none}
   .rotPhone{width:52px;height:92px;border:3px solid #59ffc8;border-radius:10px;
     margin-bottom:10px;box-shadow:0 0 24px rgba(89,255,200,.3);
     animation:rotPhone 2.4s ease-in-out infinite}
@@ -57,6 +62,7 @@
   .rotBtn{min-height:44px}
   @media (prefers-reduced-motion:reduce){.rotPhone{animation:none}}
   #rotateTry{border-color:#59ffc8;background:rgba(24,80,64,.6);color:#e8f4ff}
+  #rotateCompat{border-color:#59ffc8}
   #rotateSkip{font-size:12px;opacity:.8;padding:6px 14px}
   #gear{position:absolute;left:calc(12px + var(--safe-l));top:calc(8px + var(--safe-t));z-index:11}
   #panel{position:absolute;left:calc(14px + var(--safe-l));top:calc(58px + var(--safe-t));
@@ -84,6 +90,10 @@
     color:#bfe0ff;min-height:44px;padding:5px 0;cursor:pointer;border-radius:4px;
     font:12px 'Courier New','Microsoft YaHei',monospace}
   .skinBtn.active{background:rgba(70,150,255,.6);border-color:#59ffc8;color:#fff}
+  #directionModes{margin:0 0 12px;padding:0;border:0}
+  #directionModes legend{margin-bottom:5px;color:#e8f4ff}
+  #nativeLandscape{width:100%;margin-top:6px}
+  .directionStatus{display:block;color:#bfe0ff;font-size:12px;line-height:1.4}
   #viewportDebug{position:absolute;z-index:70;top:calc(8px + var(--safe-t));left:50%;transform:translateX(-50%);
     max-width:calc(100% - 24px - var(--safe-l) - var(--safe-r));color:#e8f4ff;font:12px monospace}
   #viewportDebug[open]{width:420px;padding:8px;box-sizing:border-box;background:#0b1426;border:1px solid #56d9ff}
@@ -95,9 +105,10 @@
 </style>
 </head>
 <body>
+<div id="viewportHost">
+<div id="safeArea" aria-hidden="true"></div>
 <div id="gameViewport">
 <canvas id="cv"></canvas>
-<div id="safeArea" aria-hidden="true"></div>
 <button type="button" class="iconBtn tbtn" id="btnL" aria-label="左转"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h12a4 4 0 0 1 0 8h-4M9 7l-5 5 5 5"/></svg></button>
 <button type="button" class="iconBtn tbtn" id="btnR" aria-label="右转"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12H8a4 4 0 0 0 0 8h4M15 7l5 5-5 5"/></svg></button>
 <button type="button" class="iconBtn tbtn" id="btnT" aria-label="主引擎"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l7-7 7 7M5 19l7-7 7 7"/></svg></button>
@@ -107,12 +118,24 @@
 <div id="rotateHint">
   <div class="rotPhone"></div>
   <div class="rotTitle">请横屏游玩</div>
-  <div class="rotSub" id="rotSub">横屏视野更宽。如浏览器仍显示竖屏，也可继续游玩。</div>
-  <button id="rotateTry" class="rotBtn">如何横屏</button>
+  <div class="rotSub">先试着转动手机。页面仍是竖屏时，可开启兼容横屏再把手机横过来。</div>
+  <button id="rotateTry" class="rotBtn">尝试原生全屏横屏</button>
+  <button id="rotateCompat" class="rotBtn">开启兼容横屏</button>
   <button id="rotateSkip" class="rotBtn">竖屏也可</button>
+  <output id="rotateStatus" class="directionStatus" aria-live="polite"></output>
 </div>
 <div id="panel" hidden>
   <div id="panelTitle">参数设置</div>
+  <fieldset id="directionModes">
+    <legend>屏幕方向</legend>
+    <div class="skinBtns">
+      <button type="button" class="skinBtn active" data-direction="auto" aria-pressed="true">自动</button>
+      <button type="button" class="skinBtn" data-direction="portrait" aria-pressed="false">竖屏</button>
+      <button type="button" class="skinBtn" data-direction="compatible" aria-pressed="false">兼容横屏</button>
+    </div>
+    <button id="nativeLandscape" type="button" class="skinBtn">尝试原生全屏横屏</button>
+    <output id="directionStatus" class="directionStatus" aria-live="polite"></output>
+  </fieldset>
   <div id="panelRows"></div>
   <div id="panelBtns">
     <button id="btnReset">恢复默认</button>
@@ -125,6 +148,7 @@
   <button type="button" id="copyViewport">复制诊断</button>
   <span id="copyViewportStatus" role="status"></span>
 </details>
+</div>
 </div>
 <script>
 'use strict';
@@ -321,7 +345,9 @@ const LEVELS = [
 /* ---------- 画布 ---------- */
 const cvs = document.getElementById('cv');
 const ctx = cvs.getContext('2d');
+const viewportHost = document.getElementById('viewportHost');
 const viewport = document.getElementById('gameViewport');
+const insetProbe = document.getElementById('safeArea');
 const visual = window.visualViewport;
 const landscapeQuery = matchMedia('(orientation: landscape)');
 const coarseQuery = matchMedia('(pointer: coarse)');
@@ -329,9 +355,13 @@ const debugPanel = document.getElementById('viewportDebug');
 const debugEnabled = new URLSearchParams(location.search).get('debug') === '1';
 const viewportEvents = [];
 let lastDebugUpdate = 0;
-let viewportDirty = true, viewportTimer = 0, viewportX = 0, viewportY = 0;
+let viewportDirty = true, viewportTimer = 0;
+let requestedW = 0, requestedH = 0, requestedX = 0, requestedY = 0;
+let hostW = 0, hostH = 0, virtualLandscape = false;
 let lastWindowWidth = 0, lastVisualWidth = 0, preferVisual = true;
-let wantsRotateHint = true;
+let wantsRotateHint = true, directionMode = 'auto';
+let nativeBusy = false, ownsFullscreen = false, ownsOrientationLock = false;
+let nativeAttempt = 0, nativeTimer = 0, nativeStatus = '';
 let W = 0, H = 0, DPR = 1, vig = null, safeTop = 0, safeBottom = 0, safeLeft = 0, safeRight = 0;
 let stars = [];
 
@@ -363,30 +393,56 @@ function resize() {
   lastWindowWidth = windowWidth;
   lastVisualWidth = visualWidth;
   const useVisual = visualReady && preferVisual;
-  const w = useVisual ? visualWidth : windowWidth;
-  const h = useVisual ? visualHeight : windowHeight;
-  if (w <= 0 || h <= 0) return;
+  const offeredW = useVisual ? visualWidth : windowWidth;
+  const offeredH = useVisual ? visualHeight : windowHeight;
+  if (offeredW <= 0 || offeredH <= 0) return;
   const x = useVisual ? visual.offsetLeft : 0;
   const y = useVisual ? visual.offsetTop : 0;
   const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const resized = w !== W || h !== H || dpr !== DPR;
-  if (!viewportDirty && !resized && x === viewportX && y === viewportY) return;
+  const hostChanged = offeredW !== requestedW || offeredH !== requestedH || x !== requestedX || y !== requestedY;
+  const unobservedChange = typeof ResizeObserver !== 'function' &&
+    (viewportHost.clientWidth !== hostW || viewportHost.clientHeight !== hostH);
+  if (!viewportDirty && !hostChanged && !unobservedChange && dpr === DPR) return;
+  if (hostChanged) {
+    requestedW = offeredW; requestedH = offeredH; requestedX = x; requestedY = y;
+    viewportHost.style.left = x + 'px'; viewportHost.style.top = y + 'px';
+    viewportHost.style.width = offeredW + 'px'; viewportHost.style.height = offeredH + 'px';
+  }
   viewportDirty = false;
-  if (W && (w >= h) !== (W >= H)) {
+  const previousHostLandscape = hostW >= hostH;
+  hostW = viewportHost.clientWidth; hostH = viewportHost.clientHeight;
+  if (!hostW || !hostH) return;
+  const hostLandscape = hostW >= hostH;
+  const rotate = directionMode === 'compatible' && !hostLandscape;
+  const boxed = directionMode === 'portrait' && hostLandscape;
+  const w = rotate ? hostH : boxed ? Math.round(hostH * 0.75) : hostW;
+  const h = rotate ? hostW : hostH;
+  const left = boxed ? Math.floor((hostW - w) / 2) : 0;
+  const resized = w !== W || h !== H || dpr !== DPR;
+  if (W && (rotate !== virtualLandscape || (w >= h) !== (W >= H) || hostLandscape !== previousHostLandscape)) {
     cancelViewportInput();
     scheduleInsetRefresh();
   }
-  if (resized || x !== viewportX || y !== viewportY) {
-    viewportX = x; viewportY = y;
-    viewport.style.left = x + 'px'; viewport.style.top = y + 'px';
-    viewport.style.width = w + 'px'; viewport.style.height = h + 'px';
-  }
+  virtualLandscape = rotate;
+  viewport.classList.toggle('virtual-landscape', rotate);
+  viewport.classList.toggle('compact-hint', h < 440);
+  viewport.style.setProperty('--host-width', hostW + 'px');
+  viewport.style.left = left + 'px';
+  viewport.style.width = w + 'px'; viewport.style.height = h + 'px';
   W = w; H = h; DPR = dpr;
-  const insets = getComputedStyle(document.getElementById('safeArea'));
-  safeTop = parseFloat(insets.paddingTop) || 0;
-  safeBottom = parseFloat(insets.paddingBottom) || 0;
-  safeLeft = parseFloat(insets.paddingLeft) || 0;
-  safeRight = parseFloat(insets.paddingRight) || 0;
+  const insets = getComputedStyle(insetProbe);
+  const top = parseFloat(insets.paddingTop) || 0;
+  const bottom = parseFloat(insets.paddingBottom) || 0;
+  const physicalLeft = parseFloat(insets.paddingLeft) || 0;
+  const physicalRight = parseFloat(insets.paddingRight) || 0;
+  safeTop = rotate ? physicalRight : top;
+  safeRight = rotate ? bottom : Math.max(0, physicalRight - (hostW - w - left));
+  safeBottom = rotate ? physicalLeft : bottom;
+  safeLeft = rotate ? top : Math.max(0, physicalLeft - left);
+  viewport.style.setProperty('--safe-t', safeTop + 'px');
+  viewport.style.setProperty('--safe-r', safeRight + 'px');
+  viewport.style.setProperty('--safe-b', safeBottom + 'px');
+  viewport.style.setProperty('--safe-l', safeLeft + 'px');
   document.body.classList.toggle('touch-ui', touchUI());
   if (resized) {
     cvs.width = Math.round(W * DPR); cvs.height = Math.round(H * DPR);
@@ -401,19 +457,22 @@ function scheduleInsetRefresh() {
   clearTimeout(viewportTimer);
   viewportTimer = setTimeout(() => { viewportDirty = true; }, 400);
 }
+function recordViewportEvent(label) {
+  if (!debugEnabled) return;
+  viewportEvents.unshift(Math.round(performance.now()) + 'ms ' + label +
+    ' · window ' + innerWidth + '×' + innerHeight +
+    (visual ? ' · visual ' + Math.round(visual.width) + '×' + Math.round(visual.height) : ''));
+  viewportEvents.length = Math.min(12, viewportEvents.length);
+}
+function invalidateViewport(label, directionChanged = false) {
+  viewportDirty = true;
+  if (directionChanged) cancelViewportInput();
+  scheduleInsetRefresh();
+  recordViewportEvent(label);
+}
 function listenViewport(target, type, label, directionChanged = false) {
   if (!target) return;
-  const onChange = () => {
-    viewportDirty = true;
-    if (directionChanged) cancelViewportInput();
-    scheduleInsetRefresh();
-    if (debugEnabled) {
-      viewportEvents.unshift(Math.round(performance.now()) + 'ms ' + label +
-        ' · window ' + innerWidth + '×' + innerHeight +
-        (visual ? ' · visual ' + Math.round(visual.width) + '×' + Math.round(visual.height) : ''));
-      viewportEvents.length = Math.min(12, viewportEvents.length);
-    }
-  };
+  const onChange = () => invalidateViewport(label, directionChanged);
   if (target.addEventListener) target.addEventListener(type, onChange, {passive:true});
   else if (type === 'change') target.addListener?.(onChange);
 }
@@ -422,18 +481,12 @@ function cancelViewportInput() {
   touchSelection = null;
   releaseAllKeys();
 }
-function showLandscapeHelp() {
-  wantsRotateHint = true;
-  syncOrientationHint();
-  const sub = document.getElementById('rotSub');
-  sub.textContent = '请在 Safari 或 Chrome 的独立标签页打开，再尝试旋转。仍是竖屏时，可选择竖屏游玩。';
-}
 function touchUI() {
-  return coarseQuery.matches;
+  return coarseQuery.matches || directionMode === 'compatible';
 }
 function syncOrientationHint() {
-  if (W >= H) wantsRotateHint = false;
-  const show = touchUI() && H > W && wantsRotateHint;
+  if (hostW >= hostH) wantsRotateHint = false;
+  const show = directionMode === 'auto' && touchUI() && H > W && wantsRotateHint;
   document.body.classList.toggle('rotate-hint', show);
   const blocked = show && state !== 'title' && state !== 'map';
   if (blocked && !rotatePaused) cancelViewportInput();
@@ -2637,18 +2690,6 @@ function buildPanel() {
   }
   skinRow.appendChild(skinLab); skinRow.appendChild(skinBtns);
   rows.appendChild(skinRow);
-  if (window.matchMedia && window.matchMedia('(pointer:coarse)').matches) {
-    const dirRow = document.createElement('div'); dirRow.className = 'skinRow';
-    const dirLab = document.createElement('div'); dirLab.className = 'skinLab';
-    dirLab.textContent = '屏幕方向';
-    const dirBtn = document.createElement('button');
-    dirBtn.type = 'button'; dirBtn.className = 'skinBtn'; dirBtn.textContent = '横屏提示';
-    dirBtn.addEventListener('click', () => {
-      showLandscapeHelp();
-    });
-    dirRow.appendChild(dirLab); dirRow.appendChild(dirBtn);
-    rows.appendChild(dirRow);
-  }
   refreshPanel();
 }
 function togglePanel() {
@@ -2671,9 +2712,106 @@ document.getElementById('rotateSkip').addEventListener('click', () => {
   wantsRotateHint = false;
   syncOrientationHint();
 });
-document.getElementById('rotateTry').addEventListener('click', () => {
-  showLandscapeHelp();
+const modeButtons = document.querySelectorAll('[data-direction]');
+const nativeButton = document.getElementById('nativeLandscape');
+function applyDirectionMode(mode) {
+  directionMode = mode;
+  wantsRotateHint = false;
+  for (const button of modeButtons) {
+    const active = button.dataset.direction === mode;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  }
+  invalidateViewport('direction mode: ' + mode, true);
+}
+function setNativeStatus(message, detail = message) {
+  nativeStatus = detail;
+  showDirectionStatus(message);
+  recordViewportEvent('native: ' + detail);
+}
+function showDirectionStatus(message) {
+  document.getElementById('rotateStatus').textContent = message;
+  document.getElementById('directionStatus').textContent = message;
+}
+function refreshNativeButton() {
+  nativeButton.textContent = ownsFullscreen || ownsOrientationLock ? '退出原生全屏横屏' : '尝试原生全屏横屏';
+}
+async function exitNativeLandscape() {
+  nativeAttempt++;
+  clearTimeout(nativeTimer);
+  if (ownsOrientationLock) {
+    try { screen.orientation?.unlock?.(); }
+    catch (error) { setNativeStatus('浏览器未能解除方向请求。', 'orientation.unlock: ' + error.name); }
+    ownsOrientationLock = false;
+  }
+  if (ownsFullscreen && document.fullscreenElement === document.documentElement) {
+    try { await document.exitFullscreen(); }
+    catch (error) { setNativeStatus('请用浏览器的全屏退出控件。', 'exitFullscreen: ' + error.name); return; }
+  }
+  ownsFullscreen = false;
+  refreshNativeButton();
+}
+function selectDirectionMode(mode) {
+  if (nativeBusy || ownsFullscreen || ownsOrientationLock) void exitNativeLandscape();
+  applyDirectionMode(mode);
+  showDirectionStatus(mode === 'compatible' ? '请把手机横过来。退出时在设置中选择「自动」或「竖屏」。' : '');
+}
+async function requestNativeLandscape() {
+  if (nativeBusy) return;
+  if (ownsFullscreen || ownsOrientationLock) { await exitNativeLandscape(); return; }
+  const root = document.documentElement;
+  const canFullscreen = typeof root.requestFullscreen === 'function' && document.fullscreenEnabled !== false;
+  const orientation = screen.orientation;
+  const canLock = typeof orientation?.lock === 'function';
+  if (!canFullscreen && !canLock) {
+    setNativeStatus('当前环境不提供网页全屏或方向锁定。可选择兼容横屏。', 'fullscreen unavailable; orientation.lock unavailable');
+    return;
+  }
+  nativeBusy = true;
+  const attempt = ++nativeAttempt;
+  const failures = [];
+  if (directionMode !== 'auto') applyDirectionMode('auto');
+  setNativeStatus('正在请求原生横屏…');
+  try {
+    if (!document.fullscreenElement && canFullscreen) {
+      try {
+        await root.requestFullscreen();
+        ownsFullscreen = document.fullscreenElement === root;
+      } catch (error) { failures.push('requestFullscreen: ' + error.name); }
+    } else if (!document.fullscreenElement) failures.push('requestFullscreen unavailable');
+    if (attempt !== nativeAttempt) { await exitNativeLandscape(); return; }
+    if (canLock) {
+      try {
+        await orientation.lock('landscape');
+        ownsOrientationLock = true;
+      } catch (error) { failures.push('orientation.lock: ' + error.name); }
+    } else failures.push('orientation.lock unavailable');
+    if (attempt !== nativeAttempt) { await exitNativeLandscape(); return; }
+    const detail = failures.join('; ');
+    setNativeStatus(ownsOrientationLock ? '已请求原生横屏。' :
+      '请尝试转动手机。页面仍为竖屏时，也可选择兼容横屏。', detail || 'orientation.lock resolved');
+    nativeTimer = setTimeout(() => {
+      if (hostW < hostH) setNativeStatus('浏览器仍提供竖屏尺寸。也可选择兼容横屏。',
+        (detail ? detail + '; ' : '') + 'no landscape container after request');
+    }, 1700);
+  } finally {
+    nativeBusy = false;
+    refreshNativeButton();
+  }
+}
+for (const button of modeButtons) button.addEventListener('click', () => selectDirectionMode(button.dataset.direction));
+document.getElementById('rotateCompat').addEventListener('click', () => selectDirectionMode('compatible'));
+document.getElementById('rotateTry').addEventListener('click', requestNativeLandscape);
+nativeButton.addEventListener('click', requestNativeLandscape);
+document.addEventListener('fullscreenchange', () => {
+  if (ownsFullscreen && !document.fullscreenElement) {
+    ownsFullscreen = false;
+    ownsOrientationLock = false;
+    refreshNativeButton();
+  }
+  invalidateViewport('fullscreenchange', true);
 });
+listenViewport(document, 'fullscreenerror', 'fullscreenerror');
 const pauseBtn = document.getElementById('pauseBtn');
 function togglePause() {
   if (state !== 'playing' || panelOpen || rotatePaused) return;
@@ -2770,7 +2908,10 @@ cvs.addEventListener('pointerup', e => {
   if (state === 'map') {
     if (mapStatsOpen) { mapStatsOpen = false; return; }   // 统计面板：点击只关面板，不穿透到节点
     const bounds = cvs.getBoundingClientRect();
-    const hit = mapHitTest(e.clientX - bounds.left, e.clientY - bounds.top);
+    // The DOM handles rotated button targets. Canvas hit testing needs the inverse transform.
+    const hit = virtualLandscape
+      ? mapHitTest((e.clientY - bounds.top) * W / bounds.height, (bounds.right - e.clientX) * H / bounds.width)
+      : mapHitTest((e.clientX - bounds.left) * W / bounds.width, (e.clientY - bounds.top) * H / bounds.height);
     if (hit === null) return;
     if (hit === mapSel && (e.pointerType !== 'touch' || touchSelection === hit)) {
       launch(hit);
@@ -2939,7 +3080,7 @@ function viewportDebugText() {
   const orientation = screen.orientation;
   const standalone = matchMedia('(display-mode: standalone)').matches;
   return [
-    'Spacer · SPACER-SPRINT-09-HOTFIX-01',
+    'Spacer · SPACER-SPRINT-09-HOTFIX-02',
     'Git commit: ' + (commit || '当前 URL 未固定到提交'),
     'Browser: ' + navigator.userAgent,
     'Context: ' + (window.top === window ? 'top-level' : 'embedded') + (standalone ? ' · standalone' : ''),
@@ -2951,12 +3092,20 @@ function viewportDebugText() {
       (orientation ? orientation.type + ' ' + orientation.angle + '°' : 'unavailable') +
       ' · legacy angle: ' + (window.orientation ?? 'unavailable'),
     'matchMedia: ' + (landscapeQuery.matches ? 'landscape' : 'portrait'),
+    'Container: ' + hostW + '×' + hostH + ' · logical ' + W + '×' + H + ' · direction mode: ' + directionMode +
+      (virtualLandscape ? ' · virtual 90°' : ''),
     'Canvas: ' + cvs.width + '×' + cvs.height + ' px · CSS ' + rect.width + '×' + rect.height + ' CSS px',
     'Game: ' + (W >= H ? 'landscape' : 'portrait') + ' · ' + state + (isPaused() ? ' · paused' : '') +
       ' · viewport source: ' + (visual && preferVisual && visual.width > 0 &&
         Math.abs(visual.scale - 1) < 0.01 ? 'visualViewport' : 'window') +
       (document.body.classList.contains('rotate-hint') ? ' · rotate hint' : ''),
     'Safe area (top/right/bottom/left): ' + [safeTop, safeRight, safeBottom, safeLeft].join(' / ') + ' px',
+    'API: ResizeObserver ' + (typeof ResizeObserver === 'function') +
+      ' · requestFullscreen ' + (typeof document.documentElement.requestFullscreen === 'function') +
+      ' · fullscreenEnabled ' + (document.fullscreenEnabled ?? 'unavailable') +
+      ' · orientation.lock ' + (typeof orientation?.lock === 'function') +
+      ' · fullscreen policy ' + ((document.permissionsPolicy || document.featurePolicy)?.allowsFeature?.('fullscreen') ?? 'unknown'),
+    'Native request: ' + (nativeStatus || 'none'),
     'Recent events:',
     ...viewportEvents,
   ].join('\n');
@@ -2993,6 +3142,10 @@ listenViewport(visual, 'scroll', 'visualViewport.scroll');
 listenViewport(screen.orientation, 'change', 'screen.orientation.change', true);
 listenViewport(landscapeQuery, 'change', 'matchMedia.orientation', true);
 listenViewport(coarseQuery, 'change', 'matchMedia.pointer');
+if (typeof ResizeObserver === 'function') {
+  const observer = new ResizeObserver(() => invalidateViewport('ResizeObserver.container'));
+  observer.observe(viewportHost);
+}
 resize();
 loadLevel(0);
 ship.visible = false;   // 标题画面只展示地形
