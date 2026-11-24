@@ -714,9 +714,9 @@ async function playModes(browser,name,host) {
     await sizeVirtual(page,390,844);
     await page.getByRole('button',{name:/回收挑战/}).click();
     const recovery = page.locator('#recoveryScreen');
-    await recovery.getByText('Falcon 9 · 即将开放').waitFor();
+    await recovery.getByRole('button',{name:/Falcon 9/}).waitFor();
     await recovery.getByText('Super Heavy · 即将开放').waitFor();
-    assert.equal(await recovery.getByRole('button').count(),1);
+    assert.equal(await recovery.getByRole('button').count(),2);
     await recovery.getByRole('button',{name:'返回玩法'}).click();
     await page.getByRole('button',{name:/自由飞行/}).click();
     await page.locator('#freeSetupScreen').waitFor();
@@ -776,7 +776,7 @@ async function playModes(browser,name,host) {
           game.tick(1800);
           check(state==='freeResult' && !missionResult.landed && campaign()===initial,'failed flight isolation');
           failures++;
-          retryFreeFlight(); game.tick(1210);
+          retryMission(); game.tick(1210);
           const soft = game.P ? {cx:game.P.cx,y:game.P.cy-game.P.R} : game.padProbe().probes[0];
           game.teleport(soft.cx,soft.y-9.1,0,6,0);
           game.tick(40);
@@ -788,13 +788,113 @@ async function playModes(browser,name,host) {
       }
       gotoFreeSetup();
       check(!startMission(FREE_MISSIONS[5],'starship') && state==='freeSetup','compatibility enforced at launch');
-      check(!startMission(RECOVERY_MISSIONS[0]) && state==='freeSetup','reserved challenge cannot launch');
+      check(!startMission(RECOVERY_MISSIONS[1]) && state==='freeSetup','reserved challenge cannot launch');
       return {starts,failures,landings};
     });
     assert.deepEqual(totals,{starts:29,failures:29,landings:29});
     assert.deepEqual(batchErrors,[]);
   } finally { await batch.close(); }
   console.log(name+' modes: home/three menus, mobile rotation, 29 allowed free scene-model pairs, incompatible/reserved launch rejected, 29 crashes/retries and 29 assisted free landings isolate active campaign and storage PASS');
+}
+async function seaRecovery(browser,name,host) {
+  const [desktop,desktopErrors] = await open(browser,host,'/fix',1280,720,false);
+  try {
+    await desktop.getByRole('button',{name:/回收挑战/}).click();
+    await desktop.locator('#recoveryScreen').getByRole('button',{name:/Falcon 9/}).click();
+    await desktop.waitForFunction(()=>game.mode==='recovery' && game.state==='playing');
+    const fuel=await desktop.evaluate(()=>ship.fuel);
+    await desktop.keyboard.down('ArrowUp');
+    await desktop.waitForFunction(start=>ship.fuel<start,fuel);
+    await desktop.keyboard.up('ArrowUp');
+    await desktop.keyboard.press('p');
+    await desktop.waitForFunction(()=>manualPaused);
+    await desktop.keyboard.press('p');
+    await desktop.keyboard.press('Escape');
+    await desktop.locator('#recoveryScreen').waitFor();
+    assert.deepEqual(desktopErrors,[]);
+  } finally { await desktop.close(); }
+  const [page,errors] = await open(browser,host,'/fix?compat=1',390,844,true,instrument,false,{
+    vl_progress:{unlocked:2,stars:[3,2,0,0,0,0,0,0,0,0]},vl_best:1500,
+    vl_stats:{landings:4,crashes:2,perfects:1},
+  });
+  try {
+    await sizeVirtual(page,390,844);
+    await page.getByRole('button',{name:/回收挑战/}).click();
+    await page.locator('#recoveryScreen').getByRole('button',{name:/Falcon 9/}).click();
+    await page.waitForFunction(() => state==='playing' && isRecovery());
+    await page.locator('#pauseBtn').click();
+    const frozen = await page.evaluate(() => [time,ship.x,ship.y,ship.fuel,deckPose(pads[0],time)]);
+    await page.setViewportSize({width:844,height:390}); await size(page,844,390);
+    assert.deepEqual(await page.evaluate(() => [time,ship.x,ship.y,ship.fuel,deckPose(pads[0],time)]),frozen);
+    await page.locator('#pauseBtn').click();
+    await page.evaluate(() => { __frames.frozen=true; });
+    const results = await page.evaluate(() => {
+      const check=(condition,msg)=>{if (!condition) throw Error(msg);};
+      const save=()=>JSON.stringify([score,lives,best,runFresh,progress,stats,...['vl_progress','vl_stats','vl_best'].map(key=>localStorage.getItem(key))]);
+      const initial=save();
+      const cases=[
+        ['landed',0,4,0,0],['相对下降速度过快',0,28,0,0],['相对横移过快',18,4,0,0],
+        ['相对甲板倾角过大',0,4,0.46,0],['支脚越过甲板边缘',0,4,0,64],
+        ['落入海面',0,4,0,160],
+      ];
+      const outcomes=[];
+      for (const [expected,slide,descent,angle,along] of cases) {
+        retryMission(); game.tick(1220);
+        const p=pads[0],d=deckPose(p,time), later=deckPose(p,time+1);
+        check(d.x!==later.x && d.y!==later.y && d.angle!==later.angle,'moving deck');
+        check(windAt(time)!==windAt(time+1),'wind');
+        const x=d.x+along*d.c, y=d.y+along*d.s;
+        const sea=expected==='落入海面';
+        game.teleport(x,sea?waterY(x,time)-9.05:y-9.08,d.vx+slide,d.vy+descent,d.angle+angle);
+        computePrediction(); check(pred.impact,'forecast intercepts '+expected);
+        for (let i=0;i<50 && state==='playing';i++) game.tick(8);
+        const actual=missionResult?.landed?'landed':missionResult?.reason;
+        check(actual===expected,expected+' / '+actual);
+        if (missionResult.landed) {
+          check(ship.vx===0 && Math.abs(missionResult.approach.slide)<1,'matched moving deck');
+          const startX=ship.x; game.tick(150);
+          check(ship.x!==startX && Math.abs(ship.a-deckPose(p,time).angle)<1e-8,'latched to deck');
+        }
+        game.tick(1850); check(state==='freeResult' && save()===initial,'isolated settlement');
+        outcomes.push(actual);
+      }
+      // Fly from the ordinary spawn using only rotate/thrust inputs and fixed physics steps.
+      retryMission(); game.tick(1210);
+      const spawnFuel=ship.fuel;
+      for (let i=0;i<120*60 && state==='playing';i++) {
+        const deck=deckPose(pads[0],time), a=deckApproach(ship,deck);
+        const targetVx=deck.vx+clamp((deck.x-ship.x)*0.36,-28,28);
+        const ax=(targetVx-ship.vx)*1.15-windAt(time)+OCEAN.drag*ship.vx;
+        const targetAngle=a.altitude<13 ? deck.angle : clamp(Math.atan2(ax,16),-0.45,0.45);
+        const error=targetAngle-ship.a-ship.spin*Math.abs(ship.spin)/20;
+        keys.left=error < -0.015; keys.right=error>0.015;
+        keys.up=a.descent>clamp(Math.sqrt(14*Math.max(0,a.altitude)),4,42);
+        game.tick(8);
+      }
+      check(state==='landed','input-only approach: '+JSON.stringify(missionResult));
+      check(ship.fuel<spawnFuel && ship.fuel>0,'powered approach fuel');
+      game.tick(1850); check(save()===initial,'full-flight isolation');
+      game.draw(); return {outcomes,fuel:missionResult.fuel,slide:missionResult.approach.slide,
+        descent:missionResult.approach.descent,tilt:missionResult.approach.tilt};
+    });
+    assert.equal(results.outcomes.length,6);
+    console.log(name+' input-only full recovery',JSON.stringify(results));
+    await page.locator('#freeResultScreen').getByRole('button',{name:'再飞一次'}).click();
+    await page.evaluate(() => { game.tick(1250); game.draw(); });
+    await page.setViewportSize({width:1280,height:720});
+    await page.evaluate(() => { resize(); game.draw(); });
+    await page.evaluate(() => {
+      const d=deckPose(pads[0],time);
+      game.teleport(d.x-15,d.y-72,d.vx+1,d.vy+8,0.03);
+      cam.x=ship.x;cam.y=ship.y-35;cam.zoom=1.25; computePrediction(); game.draw();
+    });
+    await page.screenshot({path:path.join(evidence,name+'-sea-approach.png')});
+    await page.setViewportSize({width:568,height:320});
+    await page.evaluate(() => { resize(); game.draw(); });
+    await page.screenshot({path:path.join(evidence,name+'-sea-mobile.png')});
+    assert.deepEqual(errors,[]);
+    console.log(name+' recovery: virtual touch menu, rotate while paused, matching ship/deck velocity, six contact outcomes, moving deck attachment, retry and save isolation PASS');
+  } finally { await page.close(); }
 }
 async function performanceSample(browser,name,host) {
   const values = [];
@@ -852,6 +952,7 @@ async function performanceSample(browser,name,host) {
         await regression(browser,name,host);
         await vehicleControls(browser,name,host);
         await playModes(browser,name,host);
+        await seaRecovery(browser,name,host);
         if (name === 'chromium' || name === 'webkit') await performanceSample(browser,name,host);
       } finally { await browser.close(); }
     }
