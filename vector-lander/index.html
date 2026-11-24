@@ -2081,16 +2081,19 @@ function drawOcean(v) {
   const horizon=clamp(H*0.32-drift.y,18,H*0.58);
   ctx.save();
   ctx.setTransform(DPR,0,0,DPR,0,0);
-  ctx.fillStyle='rgba(206,220,224,.20)';
-  for(let i=0;i<7;i++){
-    const x=mod(i*151-drift.x*0.35+time*3,W+210)-105;
-    const y=horizon-15-i%3*13;
-    ctx.beginPath();ctx.ellipse(x,y,45+i*4,3+i%3,0,0,TAU);ctx.fill();
+  for(let i=0;i<6;i++){
+    const x=mod(i*191-drift.x*0.35+time*3,W+250)-125;
+    const y=horizon-19-i%3*16;
+    ctx.save();ctx.translate(x,y);ctx.scale(68+i*5,6+i%3);
+    const cloud=ctx.createRadialGradient(-0.23,-0.15,0,0,0,1);
+    cloud.addColorStop(0,'rgba(219,229,233,.28)');cloud.addColorStop(1,'rgba(219,229,233,0)');
+    ctx.fillStyle=cloud;ctx.fillRect(-1,-1,2,2);ctx.restore();
   }
   const water=ctx.createLinearGradient(0,horizon,0,H);
   water.addColorStop(0,'#698f9f'); water.addColorStop(0.16,'#3e7383'); water.addColorStop(1,'#163e51');
   ctx.fillStyle=water; ctx.fillRect(0,horizon,W,H-horizon);
   ctx.fillStyle='#afcad0'; ctx.fillRect(0,horizon,W,1);
+  ctx.lineWidth=0.8;
   for (let row=0;row<12;row++) {
     const y=horizon+3+row*row*H/520;
     for (let col=0;col<10;col++) {
@@ -2683,24 +2686,14 @@ function drawHUD() {
     const dir = w >= 0 ? 1 : -1;
     ctx.globalAlpha = 0.85;
     const label = '风 WIND' + (gale ? ' · 风暴!' : building ? ' · 风暴接近' : '');
-    if (narrowHUD) {
-      const wx = hudX, wy = headY + 20;
-      hudText(label, wx, wy, 11, wcol);
-      const ax = wx + ctx.measureText(label).width + 12;
-      ctx.fillStyle = wcol;
-      ctx.beginPath();
-      ctx.moveTo(ax + dir*8, wy + 6); ctx.lineTo(ax - dir*3, wy + 1);
-      ctx.lineTo(ax - dir*3, wy + 11); ctx.closePath(); ctx.fill();
-      hudText(Math.abs(w).toFixed(0), ax + 10, wy - 1, 12, wcol);
-    } else {
-      const cx = W/2;
-      hudText(label, cx - 30, headY + 20, 12, wcol, 'right');
-      ctx.fillStyle = wcol;
-      ctx.beginPath();
-      ctx.moveTo(cx - 6 + dir*10, headY + 26); ctx.lineTo(cx - 2 - dir*4, headY + 20);
-      ctx.lineTo(cx - 2 - dir*4, headY + 32); ctx.closePath(); ctx.fill();
-      hudText(Math.abs(w).toFixed(0), cx + 4, headY + 20, 13, wcol);
-    }
+    const wx=hudX, wy=headY+20;
+    hudText(label,wx,wy,11,wcol);
+    const ax=wx+ctx.measureText(label).width+12;
+    ctx.fillStyle=wcol;
+    ctx.beginPath();
+    ctx.moveTo(ax+dir*8,wy+6);ctx.lineTo(ax-dir*3,wy+1);ctx.lineTo(ax-dir*3,wy+11);
+    ctx.closePath();ctx.fill();
+    hudText(Math.abs(w).toFixed(0),ax+10,wy-1,12,wcol);
     ctx.globalAlpha = 1;
   }
   if (levelDef.duststorm) {                          // 沙尘暴状态
