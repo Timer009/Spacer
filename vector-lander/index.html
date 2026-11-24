@@ -991,18 +991,33 @@ function loadLevel(i) {
   if (levelDef.duststorm) levelDef.duststorm.phase0 = rand(0, levelDef.duststorm.period);
   stormPhase0 = rand(0, 16);
   meteorNext = time + 3;
-  spawnShip();
+  spawnShip(1.2);
   camFollow(0, true);
   setAmbience(levelDef.amb);
   state = 'levelIntro'; stateT = 1.2;
 }
-function spawnShip() {
+function spawnShip(introSeconds=0) {
   predictionDue = -Infinity;
   ship.visible = true; ship.flame = 0; ship.thrusting = false; landPad = null; trail = [];
   ship.modelId = activeMission?.modelId ?? S.skin;
   ship.spin = 0;
   ship.fuelCapacity = Math.round(levelDef.fuel * currentModel().tank);
   ship.fuel = ship.fuelCapacity;
+  placeShip();
+  const defaultFlight=activeMission && !isFreeFlight() &&
+    ['spawnH','gScale','padW','vxMax','vyMax'].every(key=>S[key]===S_DEF[key]);
+  if(!defaultFlight) return;
+  for(let retry=0;retry<6;retry++){
+    if(idleOutcome(ship,time,introSeconds)==='failure') return;
+    if(isRecovery()) ship.x+=(isTower()?4:-9);
+    else placeShip();
+  }
+  // Keep the accessible initial position. With the controls untouched this
+  // attitude falls outside every legal pad normal and recovery angle.
+  placeShip();
+  ship.a=isRecovery()?0.35:1;
+}
+function placeShip() {
   if (isTower()) {
     ship.x=pads[0].cx+25; ship.y=pads[0].y-S.spawnH; ship.vx=-2; ship.vy=16; ship.a=0;
   } else if (isRecovery()) {
@@ -1152,13 +1167,15 @@ function shipPt(px, py) {
 }
 function shipWorldPts(body = ship, points = []) {
   const c = Math.cos(body.a), s = Math.sin(body.a);
-  const offsets = currentModel(body).pts;
+  const model=currentModel(body), offsets=model.pts;
   points.length = offsets.length;
   for (let i = 0; i < offsets.length; i++) {
     const [px, py] = offsets[i];
     const p = points[i] || (points[i] = {});
     p.x = body.x + px*c - py*s;
     p.y = body.y + px*s + py*c;
+    p.foot = py===model.landingOffset || (body.modelId==='classic' && py===7);
+    p.fromAbove=true;
   }
   return points;
 }
@@ -1203,7 +1220,7 @@ function envForces(o, dt, t) {
 
 let predictionDue = -Infinity;
 function computePrediction() {
-  const pts = [], hull = [];
+  const pts = [], hull = [], previous={};
   let impact = null;
   const sim = { x:ship.x, y:ship.y, vx:ship.vx, vy:ship.vy, a:ship.a, spin:ship.spin,
                 modelId:ship.modelId, fuel:ship.fuel, fuelCapacity:ship.fuelCapacity };
@@ -1232,30 +1249,23 @@ function computePrediction() {
       // 陨石雨先更新，再执行本步的船体物理。排队陨石以预警中心估算。
       const hit = shipWorldPts(sim, hull).find(p =>
         rain.some(m => meteorHit(m, p)) || queued.some(m => t >= m.at && meteorHit(m, p)));
-      if (hit) { impact = {...hit}; break; }
+      if (hit) { impact = {x:hit.x,y:hit.y}; break; }
     }
+    previous.x=sim.x;previous.y=sim.y;previous.a=sim.a;
     turnShip(sim, model, left, right, FIXED);
     if (thrust && sim.fuel > 0) fireEngine(sim, model, FIXED);
-    envForces(sim, FIXED, t);
-    sim.x += sim.vx*FIXED;
-    sim.y += sim.vy*FIXED;
-    if (P) {
-      if (dist2(sim.x, sim.y, P.cx, P.cy) > 5400) break;
-    } else {
-      if (sim.x < 24) { sim.x = 24; sim.vx = Math.abs(sim.vx)*0.5; }
-      if (sim.x > WORLD_W-24) { sim.x = WORLD_W-24; sim.vx = -Math.abs(sim.vx)*0.5; }
-      if (sim.y < -700) { sim.y = -700; sim.vy = Math.max(sim.vy, 0); }
-      if (levelDef.type === 'float' && sim.y > 1750) {
-        impact = {x:sim.x, y:sim.y}; break;
-      }
+    const boundary=advanceBody(sim,FIXED,t);
+    if(boundary){
+      if(boundary==='cloud') impact={x:sim.x,y:sim.y};
+      break;
     }
     if (i % stride === 0) pts.push({x:sim.x, y:sim.y});
     for (const rock of rocks) moveAsteroid(rock, FIXED);
     shipWorldPts(sim, hull);
     const obstacle = solidHazards && hull.find(p => rocks.some(a => dist2(p.x,p.y,a.x,a.y) < a.r*0.72) ||
                                    spires.some(s => hitsSpire(s, p)));
-    const hit = obstacle || findContact(hull, t, sim)?.pt;
-    if (hit) { impact = {...hit}; break; }
+    const hit = obstacle || findContact(hull, t, sim, previous)?.pt;
+    if (hit) { impact = {x:hit.x,y:hit.y}; break; }
   }
   pred = { pts, impact };
 }
@@ -1303,23 +1313,85 @@ function lugState(b) {
     gap:pad.y-b.y+14*c,vx:b.vx+14*c*b.spin,vy:b.vy+14*s*b.spin,
     tilt:Math.atan2(s,c)*180/Math.PI};
 }
-function towerContact(pts,b) {
-  const p=pads[0], lug=lugState(b);
-  for (const pt of pts) {
-    const x=pt.x-p.cx,y=pt.y-p.y;
-    if ((x>=-65 && x<=-49 && y>=-57 && y<=108) || (x>=45 && x<=49 && y>5 && y<=106)) return {pt,reason:'撞上塔架'};
-    if (Math.abs(x)>=18 && Math.abs(x)<=49 && y>=0 && y<=5) return {pt,reason:'撞上机械臂'};
+const BOOSTER_COLLIDERS=[
+  boosterHull,
+  [[-9,-14.45],[-6,-14.45],[-6,-13.55],[-9,-13.55]],
+  [[6,-14.45],[9,-14.45],[9,-13.55],[6,-13.55]],
+];
+const TOWER_SOLIDS=[
+  [-65,-49,-57,108,'撞上塔架'],[45,49,5,106,'撞上塔架'],
+  [-49,-18,0,5,'撞上机械臂'],[18,49,0,5,'撞上机械臂'],
+];
+// Swept SAT over the hull and the rectangle axes. A small angular segment uses
+// its midpoint orientation with a conservative bound on rotational travel.
+function sweptHullIntersects(hull,from,b,x0,x1,y0,y1) {
+  const dx=b.x-from.x,dy=b.y-from.y;
+  const turn=angDiff(b.a,from.a),pieces=Math.max(1,Math.ceil(Math.abs(turn)/0.012));
+  const margin=23*Math.abs(turn)/(2*pieces);
+  for(let step=0;step<pieces;step++){
+    const angle=from.a+turn*(step+0.5)/pieces,c=Math.cos(angle),s=Math.sin(angle);
+    const x=from.x+dx*step/pieces,y=from.y+dy*step/pieces;
+    let enter=0,exit=1;
+    for(let axis=-2;axis<hull.length && enter<=exit;axis++){
+      let nx=axis===-2?1:0,ny=axis===-1?1:0;
+      if(axis>=0){
+        const [ax,ay]=hull[axis], [bx,by]=hull[(axis+1)%hull.length];
+        const ex=bx-ax,ey=by-ay,len=Math.hypot(ex,ey);
+        nx=(-ey*c-ex*s)/len;ny=(-ey*s+ex*c)/len;
+      }
+      let lo=Infinity,hi=-Infinity;
+      for(const [px,py] of hull){
+        const projection=(x+px*c-py*s)*nx+(y+px*s+py*c)*ny;
+        lo=Math.min(lo,projection);hi=Math.max(hi,projection);
+      }
+      const min=(nx>=0?x0:x1)*nx+(ny>=0?y0:y1)*ny-margin;
+      const max=(nx>=0?x1:x0)*nx+(ny>=0?y1:y0)*ny+margin;
+      const velocity=(dx*nx+dy*ny)/pieces;
+      if(Math.abs(velocity)<1e-10){
+        if(hi<min || lo>max) enter=Infinity;
+      }else{
+        const first=(min-hi)/velocity,last=(max-lo)/velocity;
+        enter=Math.max(enter,Math.min(first,last));exit=Math.min(exit,Math.max(first,last));
+      }
+    }
+    if(enter<=exit) return true;
+  }
+  return false;
+}
+function towerContact(b,from=b) {
+  const p=pads[0],lug=lugState(b);
+  for(const [l,r,top,bottom,reason] of TOWER_SOLIDS){
+    const x0=p.cx+l,x1=p.cx+r,y0=p.y+top,y1=p.y+bottom;
+    if(Math.min(from.x,b.x)-23>x1 || Math.max(from.x,b.x)+23<x0 ||
+       Math.min(from.y,b.y)-23>y1 || Math.max(from.y,b.y)+23<y0) continue;
+    if(BOOSTER_COLLIDERS.some(hull=>sweptHullIntersects(hull,from,b,x0,x1,y0,y1))) return {pt:{x:b.x,y:b.y},reason};
   }
   const pt={x:lug.x,y:lug.y};
-  if (lug.gap < -4) return {pt,reason:'错过捕获窗口'};
-  if (lug.gap>0 || lug.vy<0 || Math.abs(lug.dx)>7) return;
-  const reason=Math.abs(lug.tilt)>8?'捕获倾角过大':
-    Math.abs(lug.vx)>7 || lug.vy>14?'捕获相对速度过快':'';
-  return {pt,reason};
+  if(lug.gap < -4) return {pt,reason:'错过捕获窗口'};
+  if(lug.gap>0 || lug.vy<0 || Math.abs(lug.dx)>7+1e-8) return;
+  const reason=Math.abs(lug.tilt)>8+1e-8?'捕获倾角过大':
+    Math.abs(lug.vx)>7+1e-8 || lug.vy>14+1e-8?'捕获相对速度过快':'';
+  if(reason) return {pt,reason};
+  // Both upper lugs must fit the closing gap, including their differential height.
+  const span=9*Math.abs(Math.cos(b.a)),height=9*Math.abs(Math.sin(b.a));
+  if(Math.abs(lug.dx)+span>16+1e-8 || Math.abs(lug.gap)+height>4) return;
+  return {pt,reason:''};
 }
-function findContact(pts, t, body=ship) {
-  if (isTower()) return towerContact(pts,body);
-  if (isRecovery()) return marineContact(pts,t);
+function previousPoint(pt,body,previous) {
+  const x=pt.x-body.x,y=pt.y-body.y,angle=previous.a-body.a;
+  const c=Math.cos(angle),s=Math.sin(angle);
+  return {x:previous.x+x*c-y*s,y:previous.y+x*s+y*c};
+}
+function findContact(pts, t, body=ship, previous=body) {
+  if (isTower()) return towerContact(body,previous);
+  if (isRecovery()) {
+    const hit=marineContact(pts,t);
+    if(hit?.pad && previous!==body){
+      const pt=previousPoint(hit.pt,body,previous),deck=deckPose(hit.pad,t-FIXED);
+      hit.pt.fromAbove=(pt.y-deck.y)*deck.c-(pt.x-deck.x)*deck.s<=1e-8;
+    }
+    return hit;
+  }
   if (levelDef.type === 'planetoid') {
     for (const p of pts) {
       const d = dist2(p.x, p.y, P.cx, P.cy);
@@ -1335,7 +1407,8 @@ function findContact(pts, t, body=ship) {
       const cx = padCX(pd, t);
       if (p.x >= cx - pd.w/2 - 2 && p.x <= cx + pd.w/2 + 2 &&
           p.y >= pd.y && p.y <= pd.y + 16) {
-        return {pt:p, normal:{x:0,y:-1}, pad:pd, floating:true};
+        if(previous!==body) p.fromAbove=previousPoint(p,body,previous).y<=pd.y+1e-8;
+        return {pt:p, normal:{x:0,y:-1}, pad:pd};
       }
     }
   } else {
@@ -1345,6 +1418,7 @@ function findContact(pts, t, body=ship) {
       for (const p of pts)
         if (p.x >= cx - pd.w/2 - 2 && p.x <= cx + pd.w/2 + 2 &&
             p.y >= py && p.y <= py + 16) {
+          if(previous!==body) p.fromAbove=previousPoint(p,body,previous).y<=padY(pd,t-FIXED)+1e-8;
           return {pt:p, normal:{x:0,y:-1}, pad:pd};
         }
     }
@@ -1369,8 +1443,8 @@ function hitsSpire(s, p) {
   const hw = s.w / 2 * clamp((p.y - s.top) / (s.base - s.top), 0, 1);
   return Math.abs(p.x - s.x) <= hw;
 }
-function checkContact() {
-  const contact = findContact(shipWorldPts(), time);
+function checkContact(previous) {
+  const contact = findContact(shipWorldPts(), time, ship, previous);
   if (!contact) return;
   if (isTower()) {
     const lug=lugState(ship), approach={slide:lug.vx,descent:lug.vy,tilt:lug.tilt};
@@ -1381,7 +1455,6 @@ function checkContact() {
     announce('挂点已捕获','机械臂承载中','#87e4b7',1.7);sfxLand();return;
   }
   if (isRecovery()) { judgeRecovery(contact); return; }
-  if (contact.floating && ship.vy < -3) { crash('撞上平台底部'); return; }
   judgeLanding(contact.pt, contact.normal, contact.pad);
 }
 function rideDeck(deck) {
@@ -1390,13 +1463,13 @@ function rideDeck(deck) {
   ship.y = deck.y + landOff*deck.s - offset*deck.c;
   ship.a = deck.angle;
 }
+function feetFitDeck(points,deck) {
+  return points.every(p=>Math.abs((p.x-deck.x)*deck.c+(p.y-deck.y)*deck.s)<=OCEAN.deckWidth/2);
+}
 function judgeRecovery(contact) {
   const d=contact.deck, approach=deckApproach(ship,d);
-  const feetFit=shipWorldPts().every(p => Math.abs((p.x-d.x)*d.c+(p.y-d.y)*d.s)<=OCEAN.deckWidth/2);
-  const reason = contact.water ? '落入海面' : !feetFit ? '支脚越过甲板边缘' :
-    Math.abs(approach.tilt)>OCEAN.maxTilt ? '相对甲板倾角过大' :
-    approach.descent < -1 ? '侧面擦碰甲板' : approach.descent>OCEAN.maxDescent ? '相对下降速度过快' :
-    Math.abs(approach.slide)>OCEAN.maxSlide ? '相对横移过快' : '';
+  const feetFit=feetFitDeck(shipWorldPts(),d);
+  const reason = recoveryFailure(contact,approach,feetFit);
   if (reason) { crash(reason,approach); return; }
   landPad=contact.pad; landOff=approach.along;
   rideDeck(d);
@@ -1406,11 +1479,35 @@ function judgeRecovery(contact) {
   announce('甲板回收成功','Falcon 9 · 已固定','#7dffb0',1.8);
   sfxLand(); vib(30);
 }
+function recoveryFailure(contact,approach,feetFit) {
+  return contact.water ? '落入海面' : !contact.pt.fromAbove ? '侧面擦碰甲板' :
+    Math.abs(approach.tilt)>OCEAN.maxTilt ? '相对甲板倾角过大' :
+    !contact.pt.foot ? '船身撞上甲板' : !feetFit ? '支脚越过甲板边缘' :
+    approach.descent < 0 ? '侧面擦碰甲板' : approach.descent>OCEAN.maxDescent ? '相对下降速度过快' :
+    Math.abs(approach.slide)>OCEAN.maxSlide ? '相对横移过快' : '';
+}
+function landingFailure(body,pt,normal,pad,t) {
+  if(!pad) return '偏离着陆平台';
+  if(!pt.foot) return '船身撞上平台';
+  if(pt.fromAbove===false) return '撞上平台底部';
+  const step=1/120;
+  const pvx=pad.moving?(padCX(pad,t+step/2)-padCX(pad,t-step/2))/step:0;
+  const pvy=pad.moving?(padY(pad,t+step/2)-padY(pad,t-step/2))/step:0;
+  const vx=body.vx-pvx-(pt.y-body.y)*body.spin;
+  const vy=body.vy-pvy+(pt.x-body.x)*body.spin;
+  const descent=-(vx*normal.x+vy*normal.y);
+  const slide=vx*(-normal.y)+vy*normal.x;
+  const align=Math.sin(body.a)*normal.x-Math.cos(body.a)*normal.y;
+  if(descent<0) return '撞上平台底部';
+  if(align<ALIGN_MIN) return '着陆姿态过斜';
+  if(descent>S.vyMax) return '下降速度过快';
+  if(Math.abs(slide)>S.vxMax) return '横向速度过大';
+  return '';
+}
 function judgeLanding(pt, normal, pad) {
-  const n = noseDir();
-  const align = n.x*normal.x + n.y*normal.y;
+  const why=landingFailure(ship,pt,normal,pad,time);
   const spd = Math.hypot(ship.vx, ship.vy);
-  if (pad && align >= ALIGN_MIN && ship.vy <= S.vyMax && Math.abs(ship.vx) <= S.vxMax) {
+  if (!why) {
     const landingOffset = currentModel().landingOffset;
     if (levelDef.type === 'planetoid') {
       const d = dist2(ship.x, ship.y, P.cx, P.cy);
@@ -1435,12 +1532,7 @@ function judgeLanding(pt, normal, pad) {
     spawnDust(ship.x, ship.y + 8, 20);
     ship.visible = true;
     setThrustSound(false); lastThrustSnd = false;
-  } else {
-    let why = !pad ? '偏离着陆平台' :
-              align < ALIGN_MIN ? '着陆姿态过斜' :
-              ship.vy > S.vyMax ? '下降速度过快' : '横向速度过大';
-    crash(why);
-  }
+  } else crash(why);
 }
 const FLIGHT_ADVICE = {
   '偏离着陆平台':'对准发光台面再下降',
@@ -1588,7 +1680,38 @@ function updateParticles(dt) {
 }
 
 /* ---------- 船体物理 ---------- */
+function advanceBody(body,dt,t) {
+  envForces(body,dt,t);
+  body.x+=body.vx*dt;body.y+=body.vy*dt;
+  if(P) return dist2(body.x,body.y,P.cx,P.cy)>5400?'lost':null;
+  if(body.x<24){body.x=24;body.vx=Math.abs(body.vx)*0.5;}
+  if(body.x>WORLD_W-24){body.x=WORLD_W-24;body.vx=-Math.abs(body.vx)*0.5;}
+  if(body.y< -700){body.y=-700;body.vy=Math.max(body.vy,0);}
+  return levelDef.type==='float'&&body.y>1750?'cloud':null;
+}
+function idleOutcome(initial,start,introSeconds) {
+  const body={...initial},points=[],previous={};
+  // Ignore independent hazards here: they can only turn an otherwise legal
+  // no-input landing into a crash. Never rely on them to reject a seed.
+  let t=start;
+  for(let remaining=introSeconds;remaining>0;remaining-=FIXED) t+=FIXED;
+  for(let i=0;i<120*60;i++){
+    previous.x=body.x;previous.y=body.y;previous.a=body.a;
+    t+=FIXED;
+    turnShip(body,currentModel(body),false,false,FIXED);
+    if(advanceBody(body,FIXED,t)) return 'failure';
+    const pts=shipWorldPts(body,points);
+    const contact=findContact(pts,t,body,previous);
+    if(!contact) continue;
+    const reason=isTower()?contact.reason:isRecovery()?
+      recoveryFailure(contact,deckApproach(body,contact.deck),feetFitDeck(pts,contact.deck)):
+      landingFailure(body,contact.pt,contact.normal,contact.pad,t);
+    return reason?'failure':'success';
+  }
+  return 'unresolved';
+}
 function physics(dt) {
+  const previous={x:ship.x,y:ship.y,a:ship.a};
   const model = currentModel();
   turnShip(ship, model, keys.left, keys.right, dt);
   if (keys.left !== keys.right && Math.random() < dt * 10)
@@ -1605,21 +1728,13 @@ function physics(dt) {
     lastFlame = ship.flame;
     engineLP.frequency.setTargetAtTime(260 + 560 * ship.flame, AC.currentTime, 0.08);
   }
-  envForces(ship, dt, time);
-  ship.x += ship.vx * dt; ship.y += ship.vy * dt;
-
-  if (levelDef.type === 'planetoid') {
-    if (dist2(ship.x, ship.y, P.cx, P.cy) > 5400) {
-      spawnShip();
-      announce('信号丢失 · 位置已重置', '', '#ffd75e', 1.5);
-      return;
-    }
-  } else {
-    if (ship.x < 24)     { ship.x = 24;     ship.vx = Math.abs(ship.vx)*0.5; }
-    if (ship.x > WORLD_W-24) { ship.x = WORLD_W-24; ship.vx = -Math.abs(ship.vx)*0.5; }
-    if (ship.y < -700)   { ship.y = -700;   ship.vy = Math.max(ship.vy, 0); }
-    if (levelDef.type === 'float' && ship.y > 1750) { crash('坠入云层'); return; }
+  const boundary=advanceBody(ship,dt,time);
+  if(boundary==='lost'){
+    spawnShip();
+    announce('信号丢失 · 位置已重置', '', '#ffd75e', 1.5);
+    return;
   }
+  if(boundary==='cloud'){crash('坠入云层');return;}
 
   const pts = shipWorldPts();
   for (const a of asteroids)
@@ -1639,7 +1754,7 @@ function physics(dt) {
       if (trail.length > 34) trail.shift(); }
   }
 
-  checkContact();
+  checkContact(previous);
 }
 
 /* ---------- 相机 ---------- */
@@ -1734,7 +1849,7 @@ function update(dt) {
       stateT -= dt;
       if (stateT <= 0) {
         if (unlimitedAttempts()) showMissionEnd();
-        else if (lives > 0) { spawnShip(); state = 'levelIntro'; stateT = 0.8; }
+        else if (lives > 0) { spawnShip(0.8); state = 'levelIntro'; stateT = 0.8; }
         else { lockSettlementInput(); state = 'gameover'; runFresh = true; }
       }
       break;
@@ -3692,9 +3807,9 @@ function frame(now) {
 
 /* ---------- 渲染入口 ---------- */
 const BUILD = Object.freeze({
-  version:'v2.0.15-rc.1',
-  number:'2.0.15.1',
-  builtAt:'2026-11-24T14:07:09Z',
+  version:'v2.0.15-rc.2a',
+  number:'2.0.15.2a',
+  builtAt:'2026-11-24T15:57:33Z',
   channel:'候选预览',
 });
 const menuVersion = document.getElementById('menuVersion');

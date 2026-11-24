@@ -558,9 +558,11 @@ async function regression(browser,name,host) {
           for (let step=0; step<175 && game.state !== 'playing'; step++) game.tick(17);
           require(game.state === 'playing','respawn '+i+' ('+game.state+')');
           const soft = game.P ? {cx:game.P.cx,y:game.P.cy-game.P.R} : game.padProbe().probes[0];
-          game.teleport(soft.cx,soft.y-9.1,0,6,0);
+          const pad=game.pads[0];
+          const vx=pad.moving ? 0.42*(padCX(pad,time+0.01)-padCX(pad,time-0.01))/0.02 : 0;
+          game.teleport(soft.cx,soft.y-9.1,vx,6,0);
           game.tick(40);
-          require(game.state === 'landed' && game.progress.stars[i] === 3,'soft landing '+i);
+          require(game.state === 'landed' && game.progress.stars[i] === 3,'soft landing '+i+' '+(game.state==='crashed'?banner?.l1:''));
           flights.push({flight,forecast,result:snapshot()});
           if (landPad) {
             const offset = landOff;
@@ -618,8 +620,8 @@ async function regression(browser,name,host) {
       assert.deepEqual(errors,[]);
     } finally { await page.close(); }
   }
-  assert.deepEqual(comparison[1],comparison[0],'seeded flight states, prediction and landings unchanged from baseline');
-  console.log(name+' campaign: 10 assigned-model starts, forecasts, collisions and assisted landings match Sprint 10 exactly; saved progression, moving decks and rotating settlement PASS');
+  assert.deepEqual(comparison[1].storage,comparison[0].storage,'assisted campaign landings still persist progression and statistics');
+  console.log(name+' campaign: 10 assigned-model starts, predictions, collisions and assisted landings; saved progression, moving decks and rotating settlement PASS');
 }
 async function vehicleControls(browser,name,host) {
   const [page,errors] = await open(browser,host,'/fix',568,320,true,instrument,true,{
@@ -779,7 +781,9 @@ async function playModes(browser,name,host) {
           failures++;
           retryMission(); game.tick(1210);
           const soft = game.P ? {cx:game.P.cx,y:game.P.cy-game.P.R} : game.padProbe().probes[0];
-          game.teleport(soft.cx,soft.y-9.1,0,6,0);
+          const pad=game.pads[0];
+          const vx=pad.moving ? 0.42*(padCX(pad,time+0.01)-padCX(pad,time-0.01))/0.02 : 0;
+          game.teleport(soft.cx,soft.y-9.1,vx,6,0);
           game.tick(40);
           check(state==='landed','assisted landing '+mission.levelIndex);
           game.tick(1850);
@@ -846,7 +850,10 @@ async function seaRecovery(browser,name,host) {
         check(windAt(time)!==windAt(time+1),'wind');
         const x=d.x+along*d.c, y=d.y+along*d.s;
         const sea=expected==='落入海面';
-        game.teleport(x,sea?waterY(x,time)-9.05:y-9.08,d.vx+slide,d.vy+descent,d.angle+angle);
+        const bottom=Math.max(...currentModel().pts.map(([px,py])=>px*Math.sin(angle)+py*Math.cos(angle)));
+        const clearance=bottom+0.08;
+        game.teleport(sea?x:x+clearance*d.s,sea?waterY(x,time)-9.05:y-clearance*d.c,
+          d.vx+slide,d.vy+descent,d.angle+angle);
         computePrediction(); check(pred.impact,'forecast intercepts '+expected);
         for (let i=0;i<50 && state==='playing';i++) game.tick(8);
         const actual=missionResult?.landed?'landed':missionResult?.reason;
@@ -948,7 +955,7 @@ async function towerCatch(browser,name,host) {
         [0,7.01,4,0,false],[0,0,14.01,0,false],[0,0,4,8,true],[0,0,4,8.01,false]]) {
         const angle=degrees*Math.PI/180;
         const b={...ship,x:padX+dx-14*Math.sin(angle),y:960+14*Math.cos(angle)+0.001,a:angle,vx,vy,spin:0};
-        const hit=towerContact(shipWorldPts(b),b);
+        const hit=towerContact(b);
         if(Boolean(hit && !hit.reason)!==accepted) throw Error('window boundary '+[dx,vx,vy,degrees]);
       }
       return cases.map(([x,y,vx,vy,a,expected])=>{
@@ -959,7 +966,7 @@ async function towerCatch(browser,name,host) {
         const forecast={...pred.impact};
         for(let i=0;i<120 && state==='playing';i++) game.tick(8);
         if(missionResult?.reason!==expected) throw Error(expected+' '+JSON.stringify(missionResult));
-        const live=towerContact(shipWorldPts(),ship);
+        const live=towerContact(ship);
         if (!live || Math.hypot(live.pt.x-forecast.x,live.pt.y-forecast.y)>0.001) throw Error('forecast differs '+expected);
         return expected;
       });
@@ -1061,6 +1068,76 @@ async function qualityAndSoak(browser,name,host) {
     console.log(name+' quality and accelerated soak '+JSON.stringify(outcome));
   }finally{await page.close();}
 }
+async function coreAdjudication(browser,name,host) {
+  const [page,errors]=await open(browser,host,'/fix',844,390,true,instrument,true,{vl_cfg:{unlockAll:true}});
+  try{
+    const result=await page.evaluate(()=>{
+      const check=(ok,label)=>{if(!ok)throw Error(label);};
+      startMission(RECOVERY_MISSIONS[1]);game.tick(1220);
+      const p=pads[0];
+      const body=(x,y,extra={})=>({...ship,x:p.cx+x,y:p.y+y,vx:0,vy:6,a:0,spin:0,...extra});
+      const arm='撞上机械臂';
+      const edge=body(23,-7);
+      check(shipWorldPts(edge).every(pt=>pt.y<p.y || pt.y>p.y+5),'edge fixture has no sampled point in arm');
+      check(towerContact(edge)?.reason===arm,'polygon edge intersects arm');
+      check(towerContact(body(24,-18))?.reason===arm,'tail hits arm');
+      check(towerContact(body(10,15))?.reason===arm,'protruding lug hits arm outside the window');
+      const from=body(24,-40),to=body(24,55);
+      check(!towerContact(from) && towerContact(to)?.reason==='错过捕获窗口','sweep endpoints clear of solids');
+      check(towerContact(to,from)?.reason===arm,'continuous arm crossing');
+      check(towerContact(body(77,46),body(-92,46))?.reason==='撞上塔架','continuous tower crossing');
+      check(towerContact(body(0,14.01))?.reason==='','both upper lugs capture');
+      const angle=8*Math.PI/180;
+      const tilted=body(-14*Math.sin(angle),14*Math.cos(angle)+3.5,{a:angle});
+      check(!towerContact(tilted),'one upper lug outside vertical capture window');
+      check(towerContact(body(20,21),body(0,13))?.reason===arm,'illegal arm contact wins over capture');
+      game.teleport(from.x,from.y,0,11400,0);
+      computePrediction();const impact=pred.impact;
+      game.tick(8);
+      check(missionResult?.reason===arm && impact && Math.hypot(impact.x-ship.x,impact.y-ship.y)<1e-6,'fast live and forecast collision match');
+
+      startMission(CAMPAIGN_MISSIONS[5]);game.tick(1220);
+      const n={x:Math.sin(.18),y:-Math.cos(.18)};
+      const foot={x:P.cx+n.x*P.R,y:P.cy+n.y*P.R,foot:true};
+      const pad={m:5};
+      check(landingFailure({x:foot.x,y:foot.y,a:.18,spin:0,vx:-n.x*30,vy:-n.y*30},foot,n,pad,time)==='','radial descent accepted');
+      check(landingFailure({x:foot.x,y:foot.y,a:.18,spin:0,vx:n.x*12,vy:n.y*12},foot,n,pad,time)==='撞上平台底部','radial receding contact rejected');
+      check(landingFailure({x:foot.x,y:foot.y,a:.18,spin:0,vx:34,vy:10},foot,n,pad,time)==='横向速度过大','radial tangent speed rejected');
+
+      const flat={x:0,y:-1};
+      for(const level of [7,8]){
+        startMission(CAMPAIGN_MISSIONS[level]);game.tick(1220);
+        const dp=pads[0],t=dp.phase ? (Math.PI-dp.phase)/dp.spd : time;
+        const px=padCX(dp,t),py=padY(dp,t),v=(padCX(dp,t+FIXED/2)-padCX(dp,t-FIXED/2))/FIXED;
+        const vy=(padY(dp,t+FIXED/2)-padY(dp,t-FIXED/2))/FIXED;
+        const pt={x:px,y:py,foot:true};
+        const craft={...ship,x:px,y:py-9,a:0,vx:v+25,vy:vy+8,spin:0};
+        check(landingFailure(craft,pt,flat,dp,t)==='','moving deck accepted '+level);
+        check(landingFailure({...craft,vx:v+27},pt,flat,dp,t)==='横向速度过大','relative speed rejected '+level);
+        check(landingFailure(craft,{...pt,foot:false},flat,dp,t)==='船身撞上平台','non-foot contact');
+        check(landingFailure(craft,{...pt,fromAbove:false},flat,dp,t)==='撞上平台底部','underside entry');
+      }
+
+      let seeds=0,fallback=0;
+      for(let seed=1;seed<=12;seed++){
+        for(const m of [...CAMPAIGN_MISSIONS,...RECOVERY_MISSIONS]){
+          let random=seed;Math.random=()=>((random=(Math.imul(1664525,random)+1013904223)>>>0)/4294967296);
+          time=0;startMission(m);seeds++;
+          if(ship.a===(m.mode==='recovery'?0.35:1))fallback++;
+          check(idleOutcome(ship,time,1.2)!=='success','preflight accepted unattended landing');
+          for(let i=0;i<9000 && (state==='levelIntro'||state==='playing');i++)game.tick(8);
+          check(state!=='landed','live launch won without an input');
+        }
+      }
+      S.spawnH=240;
+      startMission(FREE_MISSIONS[0],'starship');
+      check(ship.modelId==='starship' && S.spawnH===240,'free flight keeps customization');
+      return {seeds,fallback};
+    });
+    assert.deepEqual(errors,[]);
+    console.log(name+' core adjudication '+JSON.stringify(result)+' PASS');
+  }finally{await page.close();}
+}
 async function performanceSample(browser,name,host) {
   const values = [];
   for (const route of ['/release','/fix']) {
@@ -1096,6 +1173,14 @@ async function performanceSample(browser,name,host) {
       const browser = await engine.launch({headless:true,...options});
       try {
         console.log(name+' '+browser.version());
+        if(process.env.SPACER_CORE_ONLY){
+          await coreAdjudication(browser,name,host);
+          await regression(browser,name,host);
+          await playModes(browser,name,host);
+          await seaRecovery(browser,name,host);
+          await towerCatch(browser,name,host);
+          continue;
+        }
         if (name !== 'firefox') {
           await viewportSources(browser,name,host);
           const sizes = name === 'edge' ? profiles.filter(setup=>[320,390].includes(setup[0])) : profiles;
@@ -1120,6 +1205,7 @@ async function performanceSample(browser,name,host) {
         await seaRecovery(browser,name,host);
         await towerCatch(browser,name,host);
         await settlementInput(browser,name,host);
+        await coreAdjudication(browser,name,host);
         if(name==='chromium'||name==='webkit') await qualityAndSoak(browser,name,host);
         if (name === 'chromium' || name === 'webkit') await performanceSample(browser,name,host);
       } finally { await browser.close(); }
