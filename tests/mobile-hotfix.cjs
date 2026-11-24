@@ -1011,6 +1011,56 @@ async function settlementInput(browser,name,host) {
     console.log(name+' settlement: all modes and outcomes, held keyboard and two touch contacts, rapid clicks, rotation and fresh tap PASS');
   } finally {await page.close();}
 }
+async function qualityAndSoak(browser,name,host) {
+  const [page,errors]=await open(browser,host,'/fix',844,390,true,instrument,false,{vl_cfg:{quality:'invalid'}});
+  try {
+    const guide=page.locator('#quickFlight');
+    await guide.locator('summary').click();
+    assert.match(await guide.textContent(),/火箭上部挂点/);
+    await guide.locator('summary').click();
+    await page.locator('#gear').click();
+    const chooser=page.locator('#qualitySelect');
+    assert.equal(await chooser.inputValue(),'auto');
+    for(const [quality,dpr] of [['high',2],['medium',1.5],['low',1],['auto',2]]){
+      await chooser.selectOption(quality);
+      await page.waitForFunction(dpr=>DPR===dpr,dpr);
+      assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('vl_cfg')).quality),quality);
+    }
+    await page.locator('#btnClose').click();
+    const outcome=await page.evaluate(()=>{
+      __frames.frozen=true;
+      const check=(ok,message)=>{if(!ok)throw Error(message);};
+      for(let i=0;i<180;i++)updateAutomaticQuality(0.035);
+      check(adaptiveLevel===2,'auto downshifts under sustained pressure');
+      for(let i=0;i<270;i++)updateAutomaticQuality(0.016);
+      check(adaptiveLevel===0,'auto recovers detail');
+      const sample=quality=>{
+        S.quality=quality;time=0;
+        let seed=725443;Math.random=()=>((seed=(Math.imul(1664525,seed)+1013904223)>>>0)/4294967296);
+        startMission(FREE_MISSIONS[4],'classic');game.tick(1210);
+        keys.up=true;keys.left=true;game.tick(440);
+        computePrediction();
+        return JSON.stringify({ship:{...ship},state,pred});
+      };
+      const reference=sample('high');
+      for(const q of ['medium','low','auto'])check(sample(q)===reference,'quality changed physics/prediction '+q);
+      let peak=0, total=0;
+      for(let retry=0;retry<120;retry++){
+        const mission=retry%3===0?RECOVERY_MISSIONS[0]:retry%3===1?RECOVERY_MISSIONS[1]:FREE_MISSIONS[4];
+        S.quality=qualityLevels[retry%3];
+        startMission(mission,mission.modelId??'falcon9');
+        game.tick(1210);keys.up=true;game.tick(5000);keys.up=false;game.tick(5000);
+        if(state==='playing') crash('专项连续重试');
+        game.tick(2000);game.draw();total+=13210;
+        peak=Math.max(peak,particles.length,frags.length);
+        check(particles.length<=900 && trail.length<=34 && pred.pts.length<=64,'unbounded draw state');
+      }
+      return {retries:120,simSeconds:total/1000,peak};
+    });
+    assert.deepEqual(errors,[]);
+    console.log(name+' quality and accelerated soak '+JSON.stringify(outcome));
+  }finally{await page.close();}
+}
 async function performanceSample(browser,name,host) {
   const values = [];
   for (const route of ['/release','/fix']) {
@@ -1070,6 +1120,7 @@ async function performanceSample(browser,name,host) {
         await seaRecovery(browser,name,host);
         await towerCatch(browser,name,host);
         await settlementInput(browser,name,host);
+        if(name==='chromium'||name==='webkit') await qualityAndSoak(browser,name,host);
         if (name === 'chromium' || name === 'webkit') await performanceSample(browser,name,host);
       } finally { await browser.close(); }
     }

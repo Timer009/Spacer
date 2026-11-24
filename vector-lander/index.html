@@ -3247,7 +3247,7 @@ qualitySelect.addEventListener('change',()=>{
   if(qualitySelect.value!=='auto' && !qualityLevels.includes(qualitySelect.value)) return;
   S.quality=qualitySelect.value;
   adaptiveLevel=0;qualitySamples=0;frameAverage=16.7;
-  viewportDirty=true;saveCfg();
+  viewportDirty=true;predictionDue=-Infinity;saveCfg();
 });
 function refreshPanel() {
   qualitySelect.value=S.quality;
@@ -3664,17 +3664,18 @@ document.addEventListener('selectionchange', () => {
 /* ---------- 主循环（固定步长积分 120Hz） ---------- */
 const FIXED = 1/120;
 let last = performance.now(), acc = 0;
+function updateAutomaticQuality(dt) {
+  if(dt<=0 || dt>=0.2) return;
+  frameAverage+=(dt*1000-frameAverage)*0.045;
+  if(++qualitySamples<90) return;
+  if(frameAverage>27) adaptiveLevel=Math.min(2,adaptiveLevel+1);
+  else if(frameAverage<18.5) adaptiveLevel=Math.max(0,adaptiveLevel-1);
+  qualitySamples=0;
+}
 function frame(now) {
   resize();
   let dt = (now - last) / 1000; last = now;
-  if(S.quality==='auto' && state==='playing' && !isPaused() && !document.hidden && dt>0 && dt<0.2){
-    frameAverage+=(dt*1000-frameAverage)*0.045;
-    if(++qualitySamples>=90){
-      if(frameAverage>27) adaptiveLevel=Math.min(2,adaptiveLevel+1);
-      else if(frameAverage<18.5) adaptiveLevel=Math.max(0,adaptiveLevel-1);
-      qualitySamples=0;
-    }
-  }
+  if(S.quality==='auto' && state==='playing' && !isPaused() && !document.hidden) updateAutomaticQuality(dt);
   if (dt > 0.1) dt = 0.1;
   if (!isPaused() && !document.hidden) {
     acc += dt;
@@ -3691,10 +3692,10 @@ function frame(now) {
 
 /* ---------- 渲染入口 ---------- */
 const BUILD = Object.freeze({
-  version:'v2.0.14',
-  number:'2.0.14.2',
-  builtAt:'2026-11-24T14:03:32Z',
-  channel:'正式发布',
+  version:'v2.0.15-rc.1',
+  number:'2.0.15.1',
+  builtAt:'2026-11-24T14:07:09Z',
+  channel:'候选预览',
 });
 const menuVersion = document.getElementById('menuVersion');
 menuVersion.textContent = BUILD.version;
