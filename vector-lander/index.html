@@ -74,6 +74,11 @@
     -webkit-touch-callout:none;user-select:none;
     font:13px 'Courier New','Microsoft YaHei',monospace}
   .virtual-landscape #panel,.virtual-landscape .modeScreen{touch-action:none;overscroll-behavior:contain}
+  #quickFlight{margin-top:8px;color:#b4cce2}
+  #quickFlight summary{min-height:44px;display:flex;align-items:center;cursor:pointer;color:#a8d7d8}
+  #quickFlight summary::before{content:'+';margin-right:8px}
+  #quickFlight[open] summary::before{content:'−'}
+  #quickFlight p{font-size:12px;margin-bottom:6px}
   #titleScreen{bottom:calc(34px + var(--safe-b))}
   #menuVersion{position:absolute;left:calc(16px + var(--safe-l));bottom:calc(8px + var(--safe-b));
     color:#aac1d7;font:12px monospace;pointer-events:none}
@@ -188,6 +193,12 @@
       <button type="button" class="modeCard" data-mode="free"><strong>自由飞行</strong><span>自选场景和飞船 · 无限重试</span></button>
       <button type="button" class="modeCard" data-mode="recovery"><strong>回收挑战</strong><span>移动甲板着陆与双臂捕获</span></button>
     </div>
+    <details id="quickFlight">
+      <summary>操作与着陆条件</summary>
+      <p>用左右键转向，按住上键或空格点火。触屏用左侧转向、右侧点火。松手后飞船仍会沿原方向运动。</p>
+      <p>先在自由飞行练习。对准发光平台，保持直立，减小横移和下降速度。战役默认限制为横移 26、下降 36，安全倾角约 35°。</p>
+      <p>海上回收看相对甲板速度。塔架挑战让火箭上部挂点进入双臂之间。各限制见挑战卡片。</p>
+    </details>
   </div>
 </section>
 <section class="modeScreen" id="freeSetupScreen" aria-labelledby="freeTitle" hidden>
@@ -1431,6 +1442,19 @@ function judgeLanding(pt, normal, pad) {
     crash(why);
   }
 }
+const FLIGHT_ADVICE = {
+  '偏离着陆平台':'对准发光台面再下降',
+  '着陆姿态过斜':'触地前将机身转回接近直立',
+  '下降速度过快':'更早点火减速，避免临地急刹',
+  '横向速度过大':'朝漂移的反方向倾斜点火',
+  '落入海面':'先对准甲板中心，再降低下降速度',
+  '支脚越过甲板边缘':'让支脚收进甲板两端之间',
+  '错过捕获窗口':'先对准双臂中央，再让上部挂点下降',
+  '捕获相对速度过快':'在挂点进入双臂前降低横移和下降速度',
+  '捕获倾角过大':'调整机身姿态后再进入双臂',
+  '撞上塔架':'从双臂正上方进近，避开塔身',
+  '撞上机械臂':'先把上部挂点对准双臂中央',
+};
 function crash(why, approach) {
   ship.visible = false; ship.thrusting = false; ship.flame = 0;
   setThrustSound(false); lastThrustSnd = false;
@@ -1439,7 +1463,7 @@ function crash(why, approach) {
   shake = 18; flashA = 0.5; vib(60);
   sfxExplosion();
   announce('坠毁 CRASH · ' + why,
-           unlimitedAttempts() ? '可以再次尝试' : lives > 0 ? '剩余飞船 ×' + lives : '飞船已耗尽',
+           FLIGHT_ADVICE[why] || (unlimitedAttempts() ? '可以再次尝试' : lives > 0 ? '剩余飞船 ×' + lives : '飞船已耗尽'),
            '#ff6b5e', 1.7);
 }
 function settleMission(result) {
@@ -1476,11 +1500,13 @@ function showMissionEnd() {
     document.getElementById('freeResultInfo').textContent = (result.reason || (isTower()?'双臂承载':'已在甲板固定')) +
       (a ? ' · 相对横移 ' + a.slide.toFixed(1) + ' · 相对下降 ' + a.descent.toFixed(1) +
       ' · 相对倾角 ' + a.tilt.toFixed(1) + '°' : '') + ' · 剩余燃料 ' + result.fuel;
+    const advice=FLIGHT_ADVICE[result.reason];
+    if(advice) document.getElementById('freeResultInfo').textContent+='。'+advice;
     return;
   }
   document.getElementById('freeResultTitle').textContent = result.landed ? '自由飞行 · 着陆成功' : '自由飞行 · 飞行结束';
   document.getElementById('freeResultInfo').textContent = stationTitle(levelDef) + ' · ' + currentModel().label +
-    (result.landed ? ' · 剩余燃料 ' + result.fuel : ' · ' + result.reason);
+    (result.landed ? ' · 剩余燃料 ' + result.fuel : ' · ' + result.reason + (FLIGHT_ADVICE[result.reason]?'。'+FLIGHT_ADVICE[result.reason]:''));
 }
 
 /* ---------- 特效 ---------- */
