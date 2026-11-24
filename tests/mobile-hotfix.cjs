@@ -310,6 +310,27 @@ async function viewportSources(browser,name,host) {
   } finally { await check.close(); }
   console.log(name+' geometry: baseline follows native window rotation but stays 390px with VV-only change; hotfix follows both sources, address height/offset, no-API fallback and standalone probe PASS');
 }
+async function rotatedSettingsSwipe(browser,host,url) {
+  const [page,errors] = await open(browser,host,url,320,568);
+  try {
+    await sizeVirtual(page,320,568);
+    await page.locator('#gear').tap();
+    const panel = page.locator('#panel');
+    const b = await panel.boundingBox();
+    const session = await page.context().newCDPSession(page);
+    const x = b.x + 12, y = b.y + 10;
+    const send = (type,xx) => session.send('Input.dispatchTouchEvent',{
+      type,touchPoints:type==='touchEnd' ? [] : [{x:xx,y}],
+    });
+    for (let i=0;i<8;i++) {
+      await send('touchStart',x);
+      for (let step=1;step<=6;step++) await send('touchMove',x+(b.width-24)*step/6);
+      await send('touchEnd');
+    }
+    assert.deepEqual(errors,[]);
+    return await panel.evaluate(el => ({top:el.scrollTop,max:el.scrollHeight-el.clientHeight}));
+  } finally { await page.close(); }
+}
 async function compatibleLandscape(browser,name,host) {
   const [page,errors] = await open(browser,host,'/fix?debug=1',390,844);
   const nativeCalls = () => window.__nativeCalls;
@@ -821,6 +842,11 @@ async function performanceSample(browser,name,host) {
           console.log(name+' landscape-first and debug clipboard fallback PASS');
         }
         await containerAndNative(browser,name,host);
+        if (name === 'chromium') {
+          const scroll = await rotatedSettingsSwipe(browser,host,'/fix?compat=1');
+          assert.ok(scroll.max>0 && Math.abs(scroll.max-scroll.top)<2,JSON.stringify(scroll));
+          console.log('Rotated settings touch swipe reached bottom',scroll);
+        }
         await compatibleLandscape(browser,name,host);
         await compatibilityLink(browser,name,host);
         await regression(browser,name,host);
