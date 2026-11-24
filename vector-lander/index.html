@@ -33,7 +33,7 @@
   .tbtn.active{background:#235892}
   body.touch-ui.touch-play .tbtn{display:flex}
   #btnL{left:calc(12px + var(--safe-l))}
-  #btnR{left:calc(20px + var(--safe-l) + clamp(48px,19%,76px))}
+  #btnR{left:calc(32px + var(--safe-l) + clamp(48px,19%,76px))}
   #btnT{right:calc(12px + var(--safe-r));width:clamp(54px,22%,88px);
     color:#ffc35e;border-color:#ffc35e}
   #statsBtn,#pauseBtn{position:absolute;right:calc(12px + var(--safe-r));
@@ -948,6 +948,7 @@ function loadLevel(i) {
   stormPhase0 = rand(0, 16);
   meteorNext = time + 3;
   spawnShip();
+  camFollow(0, true);
   setAmbience(levelDef.amb);
   state = 'levelIntro'; stateT = 1.2;
 }
@@ -1383,7 +1384,7 @@ function judgeLanding(pt, normal, pad) {
     const starTxt = '★'.repeat(starN) + '☆'.repeat(3 - starN);
     announce(isFreeFlight() ? '着陆成功 SOFT LANDING' : '着陆成功 SOFT LANDING  +' + gained,
              isFreeFlight() ? '剩余燃料 ' + missionResult.fuel :
-               starTxt + ' · 燃料加成 +' + fuelBonus + ' · 得分×' + pad.m + ' · 剩余燃料 ' + missionResult.fuel,
+               starTxt + ' · 燃料加成 +' + fuelBonus + (pad.m===1?'':' · 得分×'+pad.m) + ' · 剩余燃料 ' + missionResult.fuel,
              '#7dffb0', 2.0);
     sfxLand(); vib(30);
     spawnDust(ship.x, ship.y + 8, 20);
@@ -1587,19 +1588,40 @@ function clampCamX(x, z) {
   if (half >= WORLD_W/2) return WORLD_W/2;
   return clamp(x, half, WORLD_W - half);
 }
-function camFollow(dt) {
-  let alt;
-  if (levelDef.type === 'planetoid') alt = dist2(ship.x, ship.y, P.cx, P.cy) - P.R;
-  else if (isRecovery()) alt = Math.max(0,padY(pads[0],time) - ship.y);
-  else if (levelDef.type === 'float')
-    alt = Math.max(0, ship.y - Math.min(...pads.map(p => p.y)));
-  else alt = heightAt(ship.x) - ship.y;
-  const zMin = Math.max(0.20, W / WORLD_W);
-  const tz = clamp(Math.min((H*0.58)/(alt + 250), 1.55), zMin, 1.55);
-  cam.zoom += (tz - cam.zoom) * Math.min(1, dt*3.0);
-  cam.x += (ship.x - cam.x) * Math.min(1, dt*5.0);
-  cam.y += (ship.y - 40 - cam.y) * Math.min(1, dt*5.0);
-  cam.x = clampCamX(cam.x, cam.zoom);
+function nearestTarget() {
+  if (P) {
+    const half=P.R*Math.sin(levelDef.pads[0].arc);
+    return {x:P.cx,y:P.cy-P.R,w:2*half,below:P.R*(1-Math.cos(levelDef.pads[0].arc))};
+  }
+  let target=null, distance=Infinity;
+  for (const pad of pads) {
+    const x=padCX(pad,time),y=padY(pad,time);
+    const d=Math.hypot(ship.x-x,ship.y-y);
+    if (d>=distance || !Number.isFinite(d)) continue;
+    distance=d;
+    target={x,y,w:isTower()?130:pad.w,above:isTower()?58:0,below:isTower()?114:isRecovery()?48:0};
+  }
+  return target;
+}
+function camFollow(dt, snap = false) {
+  const target=nearestTarget();
+  const usableHeight=H-safeTop-safeBottom;
+  const usableWidth=W-safeLeft-safeRight;
+  const dx=target ? target.x-ship.x : 0, dy=target ? target.y-ship.y : 0;
+  const distance=Math.hypot(dx,dy);
+  const approach=1-clamp((distance-48)/220,0,1);
+  const bodyHeight=ship.modelId==='superheavy'?42:23;
+  const overview=(bodyHeight===42?36:28)/bodyHeight;
+  const close=(bodyHeight===42?57:48)/bodyHeight;
+  const desired=overview+(close-overview)*approach;
+  const fit=Math.min(usableWidth*0.72/(Math.abs(dx)+48),usableHeight*0.57/(Math.abs(dy)+32));
+  const zoom=Math.max(overview,Math.min(desired,fit),W/WORLD_W);
+  const blend=snap?1:1-Math.exp(-dt*3.5);
+  cam.zoom+=(zoom-cam.zoom)*blend;
+  const frameWeight=0.38*clamp((fit/overview-0.55)/0.45,0,1);
+  cam.x+=(ship.x+dx*frameWeight-cam.x)*blend;
+  cam.y+=(ship.y+dy*frameWeight-cam.y)*blend;
+  cam.x=clampCamX(cam.x,cam.zoom);
 }
 
 /* ---------- 主更新 ---------- */
@@ -1886,6 +1908,7 @@ function drawChevron(x, y, v) {
   ctx.globalAlpha = 1;
 }
 function drawMultiplier(left, top, value, v) {
+  if (value===1) return;
   const u = 1/v.z;
   ctx.save();
   ctx.fillStyle = '#171922'; ctx.fillRect(left, top, 46*u, 12*u);
@@ -2001,10 +2024,7 @@ function drawSkyDock(cx, y, w, v, p) {             // 木星：天空坞站
   ctx.globalAlpha = bl; ctx.fillStyle = '#ff5c5c';
   ctx.beginPath(); ctx.arc(cx + w*0.42, y - 24/v.z, 2.6/v.z, 0, TAU); ctx.fill();
   ctx.globalAlpha = 1;
-  // ×N 涂装（画在机舱面上）
-  ctx.fillStyle = '#ffd75e'; ctx.font = `${Math.round(10/v.z)}px 'Courier New',monospace`;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('得分×' + p.m, cx, y + 8/v.z);
+  drawMultiplier(cx+w/2+4/v.z,y+8/v.z,p.m,v);
   drawChevron(cx, y - 52/v.z, v);
 }
 function drawOcean(v) {
@@ -2095,11 +2115,8 @@ function drawPads(v) {
       ctx.beginPath(); ctx.arc(bx, by, 3/v.z, 0, TAU); ctx.fill();
       ctx.globalAlpha = 1;
     }
-    // ×5 涂装（弧顶上方）+ 径向小型信标塔
-    ctx.fillStyle = '#ffd75e'; ctx.font = `${Math.round(11/v.z)}px 'Courier New',monospace`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('得分×' + levelDef.pads[0].m, P.cx, P.cy - P.R + 14/v.z);
-    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    const arcEdge=P.R*Math.sin(arc);
+    drawMultiplier(P.cx+arcEdge+5/v.z,P.cy-P.R+18/v.z,levelDef.pads[0].m,v);
     const ga = -Math.PI/2 + arc, dxr = Math.cos(ga), dyr = Math.sin(ga);
     const bx = P.cx + dxr*P.R, by = P.cy + dyr*P.R;
     ctx.strokeStyle = 'rgba(170,180,200,.65)'; ctx.lineWidth = 1.6/v.z;
@@ -2207,13 +2224,13 @@ function drawBeamsScreen() {                        // 定位光柱（低能见�
   if (state === 'title') return;
   const beam = (sx, sy, bw) => {
     const bh = Math.max(300*cam.zoom, 110);
-    const bl = 0.22 + 0.06*Math.sin(time*2.5);
+    const bl = 0.12 + 0.035*Math.sin(time*2.5);
     const g2 = ctx.createLinearGradient(0, sy, 0, sy - bh);
     g2.addColorStop(0, `rgba(255,215,94,${bl})`);
     g2.addColorStop(1, 'rgba(255,215,94,0)');
     ctx.fillStyle = g2;
     ctx.fillRect(sx - bw/2, sy - bh, bw, bh);
-    ctx.globalAlpha = 0.75; ctx.fillStyle = '#ffd75e';
+    ctx.globalAlpha = 0.52; ctx.fillStyle = '#ffd75e';
     ctx.fillRect(sx - bw/2, sy - 2, bw, 2.5);
     ctx.globalAlpha = 1;
   };
@@ -2621,32 +2638,20 @@ function drawHUD() {
   else if (lowFuel() && state === 'playing')
     hudText('LOW FUEL 低燃料', W/2, headY + 58, 14, Math.sin(time*6)>0 ? '#ffb347' : '#ffd08d', 'center');
 
-  if (state === 'playing') {                         // 屏幕外平台方向箭头
-    let bestP = null, bd = 1e9;
-    for (const p of pads) {
-      const cx = padCX(p, time), py = padY(p, time);
-      if (!Number.isFinite(cx) || !Number.isFinite(py)) continue;
-      const d = dist2(ship.x, ship.y, cx, py);
-      if (d < bd) { bd = d; bestP = p; }
-    }
-    if (bestP) {
-      const px = padCX(bestP, time), py = padY(bestP, time);
-      const sx = (px - cam.x)*cam.zoom + W*0.5, sy = (py - cam.y)*cam.zoom + H*0.42;
-      if (sx < 30 || sx > W-30 || sy < 40 || sy > H-90) {
-        const ang = Math.atan2(py - ship.y, px - ship.x);
-        const ex = W/2 + Math.cos(ang) * Math.min(W, H)*0.36;
-        const ey = H*0.45 + Math.sin(ang) * Math.min(W, H)*0.36;
-        ctx.save();
-        ctx.translate(clamp(ex, 34, W-34), clamp(ey, 46, H-100));
-        ctx.rotate(ang);
-        ctx.globalAlpha = 0.85; ctx.fillStyle = levelDef.theme.accent;
-        ctx.beginPath(); ctx.moveTo(12, 0); ctx.lineTo(-7, -7); ctx.lineTo(-7, 7);
-        ctx.closePath(); ctx.fill();
-        ctx.restore();
-        hudText(isTower() ? '捕获窗口' : isRecovery() ? '回收船' : '得分×'+bestP.m, clamp(ex, 34, W-34), clamp(ey, 46, H-100) + 12, 11,
-                levelDef.theme.accent, 'center');
-        ctx.globalAlpha = 1;
-      }
+  const target=nearestTarget();
+  if (target) {
+    const sx=(target.x-cam.x)*cam.zoom+W/2, sy=(target.y-cam.y)*cam.zoom+H*0.42;
+    const half=target.w*cam.zoom/2;
+    const above=(target.above||0)*cam.zoom, below=(target.below||0)*cam.zoom;
+    if (sx+half<0 || sx-half>W || sy+below<0 || sy-above>H) {
+      const dx=sx-W/2,dy=sy-H/2;
+      const edge=Math.min((W/2-28)/Math.max(1,Math.abs(dx)),(H/2-28)/Math.max(1,Math.abs(dy)));
+      ctx.save();
+      ctx.translate(clamp(W/2+dx*edge,safeLeft+20,W-safeRight-20),clamp(H/2+dy*edge,safeTop+20,H-hudLift-12));
+      ctx.rotate(Math.atan2(dy,dx));
+      ctx.fillStyle=levelDef.theme.accent || '#8fe7dc';
+      ctx.beginPath();ctx.moveTo(9,0);ctx.lineTo(-6,-5);ctx.lineTo(-6,5);ctx.closePath();ctx.fill();
+      ctx.restore();
     }
   }
 }
@@ -3472,8 +3477,15 @@ function bindTouch(id, key) {
     el.classList.toggle('active', pointers.size > 0);
   };
   el.addEventListener('pointerdown', on);
-  el.addEventListener('pointerup', off);
-  el.addEventListener('pointercancel', off);
+  el.addEventListener('pointermove', e => {
+    if (!pointers.has(e.pointerId)) return;
+    const bounds=el.getBoundingClientRect();
+    if (e.clientX>=bounds.left && e.clientX<=bounds.right && e.clientY>=bounds.top && e.clientY<=bounds.bottom) return;
+    off(e);
+    if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+  });
+  window.addEventListener('pointerup', off, true);
+  window.addEventListener('pointercancel', off, true);
   el.addEventListener('lostpointercapture', off);
 }
 bindTouch('btnL', 'left'); bindTouch('btnR', 'right'); bindTouch('btnT', 'up');
@@ -3516,9 +3528,9 @@ function frame(now) {
 
 /* ---------- 渲染入口 ---------- */
 const BUILD = Object.freeze({
-  version:'v2.0.13-rc.5',
-  number:'2.0.13.5',
-  builtAt:'2026-11-24T12:06:24Z',
+  version:'v2.0.13-rc.6',
+  number:'2.0.13.6',
+  builtAt:'2026-11-24T13:11:16Z',
   channel:'候选预览',
 });
 const menuVersion = document.getElementById('menuVersion');
