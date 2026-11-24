@@ -2127,9 +2127,19 @@ function drawOcean(v) {
   const step=8/v.z;
   ctx.moveTo(v.l,displayWater(v.l));
   for (let x=v.l+step;x<v.r+step;x+=step) ctx.lineTo(x,displayWater(x));
-  ctx.strokeStyle='#9ed4d4'; ctx.lineWidth=2/v.z; ctx.stroke();
+  ctx.strokeStyle='#9ed4d4'; ctx.lineWidth=1.2/v.z; ctx.stroke();
   ctx.lineTo(v.r+step,v.b+50); ctx.lineTo(v.l,v.b+50);
   ctx.closePath(); ctx.fillStyle='rgba(23,82,101,.94)'; ctx.fill();
+  ctx.strokeStyle='rgba(211,238,238,.45)';ctx.lineWidth=0.9/v.z;
+  for(const side of [-1,1]){
+    ctx.beginPath();
+    for(let i=0;i<7;i++){
+      const x=deck.x+side*(half-8+i*6);
+      const y=displayWater(x)+2+0.8*Math.sin(time*4-i);
+      if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  }
 }
 function drawPads(v) {
   if (isTower()) {
@@ -2359,6 +2369,11 @@ function drawParticles() {
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU); ctx.stroke();
       continue;
     }
+    const atmosphere=Boolean(levelDef.drag || isTower());
+    if(atmosphere && p.kind==='jet' && t<0.7){
+      ctx.globalAlpha=t*0.19;ctx.fillStyle='#a4afb5';
+      ctx.beginPath();ctx.arc(p.x,p.y,1+(1-t)*4,0,TAU);ctx.fill();continue;
+    }
     ctx.globalAlpha = t;
     ctx.strokeStyle = p.kind === 'plume' ? (t > 0.5 ? '#ffb347' : '#ff6b3d') :
                       p.kind === 'boom' ? (t > 0.5 ? '#ffe9b0' : '#ff6b3d') :
@@ -2501,33 +2516,32 @@ function drawShip() {
   if (!ship.visible) return;
   const sk = currentModel();
   drawTrail();
-  if (ship.flame > 0.05) {                          // 四层尾焰 + 马赫环
-    const len = (10 + 10*ship.flame) * (0.85 + 0.3*Math.abs(Math.sin(time*38)));
-    const fw = sk.flameW || 2.6, fy = sk.flameY || 9;
-    const [lx, ly] = shipPt(-fw, fy), [rx, ry] = shipPt(fw, fy);
-    const layers = [
-      ['#ff7b39', fw, 1.0, 0.5],
-      ['#ffb347', fw*0.7, 0.72, 0.75],
-      ['#fff7d6', fw*0.42, 0.42, 1.0],
-    ];
-    for (const [col, w, k, al] of layers) {
-      const [mx, my] = shipPt(0, fy + len*k);
-      ctx.globalAlpha = al;
-      ctx.strokeStyle = col; ctx.lineWidth = w/cam.zoom;
-      ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(mx, my); ctx.lineTo(rx, ry);
-      ctx.closePath(); ctx.stroke();
+  if (ship.flame > 0.05) {
+    const atmosphere=Boolean(levelDef.drag || isTower());
+    const speed=Math.hypot(ship.vx,ship.vy);
+    const length=(atmosphere?25:20)*ship.flame*(1+0.12*Math.sin(time*47));
+    const fy=sk.flameY, width=sk.flameW;
+    const neck=shipPt(0,fy),tail=shipPt(0,fy+length);
+    const flow=ctx.createLinearGradient(...neck,...tail);
+    flow.addColorStop(0,'#eaf8ff');flow.addColorStop(0.19,atmosphere?'#a9d3ff':'#cddfff');
+    flow.addColorStop(0.48,'rgba(250,174,100,.72)');flow.addColorStop(1,'rgba(216,117,78,0)');
+    const flare=atmosphere?1.55:2.9;
+    shipPoly([[-width,fy],[width,fy],[width*flare,fy+length*0.56],[0,fy+length],[-width*flare,fy+length*0.56]],flow,null,0);
+    if(atmosphere){
+      const target=nearestTarget();
+      const clearance=target ? target.y-ship.y : Infinity;
+      if(clearance>0 && clearance<100){
+        const opacity=0.2*(1-clearance/100)*ship.flame;
+        ctx.fillStyle=isRecovery()?'#c4dce1':'#b5aaa0';
+        const floor=isRecovery()?waterY(ship.x,time):target.y;
+        for(let i=0;i<5;i++){
+          const drift=mod(time*(26+speed*0.05)+i*13,52);
+          ctx.globalAlpha=opacity*(1-drift/55);
+          ctx.beginPath();ctx.ellipse(ship.x, floor-drift*0.08,5+drift,1+drift*0.04,0,0,TAU);ctx.fill();
+        }
+        ctx.globalAlpha=1;
+      }
     }
-    ctx.globalAlpha = 0.8; ctx.strokeStyle = '#ffd75e'; ctx.lineWidth = 1/cam.zoom;
-    for (const kk of [0.35, 0.6]) {
-      const [d1x, d1y] = shipPt(0, fy + len*kk - 1.6);
-      const [d2x, d2y] = shipPt(0, fy + len*kk + 1.6);
-      const [m1x, m1y] = shipPt(1.4, fy + len*kk);
-      const [m2x, m2y] = shipPt(-1.4, fy + len*kk);
-      ctx.beginPath();
-      ctx.moveTo(d1x, d1y); ctx.lineTo(m1x, m1y); ctx.lineTo(d2x, d2y);
-      ctx.lineTo(m2x, m2y); ctx.closePath(); ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
   }
   // 机身
   ctx.beginPath();
