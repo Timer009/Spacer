@@ -1804,7 +1804,9 @@ function camFollow(dt, snap = false) {
   const zoom=Math.max(W/WORLD_W,cruise+(framing-cruise)*preview);
   const weight=preview*(1-final*0.55);
   const cx=ship.x+(left+right)/2*weight+(safeRight-safeLeft)/(2*zoom);
-  const cy=ship.y+((top+bottom)/2+height*0.06/zoom)*weight+(safeBottom-safeTop)/(2*zoom);
+  const aimY=ship.y+((top+bottom)/2+height*0.06/zoom)*weight+(safeBottom-safeTop)/(2*zoom);
+  const shipHeadroom=safeTop+35+bodyHeight*zoom*0.54;
+  const cy=Math.min(aimY,ship.y+(H*0.42-shipHeadroom)/zoom);
   const blend=snap?1:1-Math.exp(-dt*4.1);
   cam.zoom+=(zoom-cam.zoom)*blend;
   cam.x+=(cx-cam.x)*blend;cam.y+=(cy-cam.y)*blend;
