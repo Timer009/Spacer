@@ -3594,6 +3594,7 @@ function togglePanel() {
   if (!panelOpen) {
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     if (state === 'freeSetup') refreshFreeOptions();
+    if (state === 'title' && quickFlight.open) refreshFlightGuide();
   }
 }
 document.getElementById('gear').addEventListener('click', () => {
@@ -4026,15 +4027,16 @@ document.getElementById('replayFlightIntro').onclick=()=>{
   introAgain=true;
   document.getElementById('introReplayStatus').textContent='将在下次飞行显示';
 };
-document.getElementById('quickFlight').addEventListener('toggle',e=>{
-  if(!e.currentTarget.open)return;
+const quickFlight=document.getElementById('quickFlight');
+function refreshFlightGuide() {
   document.getElementById('guideModels').textContent='飞船　'+MODEL_KEYS.map(id=>{
     const model=SHIP_MODELS[id];
     return model.label+'（'+model.handling+'）';
   }).join('；')+'。Super Heavy 专用于塔架捕获。';
   document.getElementById('guideLimits').textContent='当前普通着陆条件　支脚落在平台内，接近直立。下降不超过'+S.vyMax+
     '，横移绝对值不超过'+S.vxMax+'，相对着陆面法线倾角约不超过'+Math.round(Math.acos(ALIGN_MIN)*180/Math.PI)+'°。';
-});
+}
+quickFlight.addEventListener('toggle',()=>{if(quickFlight.open)refreshFlightGuide();});
 document.getElementById('driftFuelRun').onclick=()=>{
   if(hasFuelDecision()){fuelDecisionDismissed=true;fuelDecision.hidden=true;}
 };
