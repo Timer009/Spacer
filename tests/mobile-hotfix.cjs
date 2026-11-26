@@ -1187,7 +1187,7 @@ async function releaseCandidateChecks(browser,name,host) {
       document.getElementById('endFuelRun').click();
       check(state==='recovery'&&campaignData()===save,'explicit abort returns without modifying campaign');
       startMission(RECOVERY_MISSIONS[0]);game.tick(1220);
-      const outside=pads[0].cx+185;
+      const outside=padCX(pads[0],time)+185;
       game.teleport(outside,waterY(outside,time)-9.03,0,8,0);ship.fuel=0;emptyFuelTime=1.49;
       game.tick(25);game.draw();
       check(state==='crashed'&&missionResult.reason==='落入海面'&&fuelDecision.hidden,'water contact before fuel prompt');
