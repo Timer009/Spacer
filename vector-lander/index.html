@@ -1132,7 +1132,7 @@ const boosterHull=[[-5,-22],[5,-22],[6,-17],[6,17],[4,20],[-4,20],[-6,17],[-6,-1
 SHIP_MODELS.superheavy={label:'Super Heavy',dryMass:2.2,fuelMass:0.42,thrust:2.5,tank:1.45,burn:1.5,
   turnRate:1.8,moment:2.4,torque:13,landingOffset:20,hull:boosterHull,
   pts:[...boosterHull,[-9,-14],[9,-14]],flameY:20,flameW:4,outline:'#c7d8e2',fill:'#687c89',lights:[],
-  draw(){shipLine(-9,-14,9,-14,'#ffce74',2);shipLine(-4,-20,-4,16,'#eaf2f6',1);}};
+  draw:drawSuperHeavySkin};
 function currentModel(body = ship) { return SHIP_MODELS[body.modelId]; }
 function vehicleMass(body, model) {
   return model.dryMass + model.fuelMass * clamp(body.fuel / body.fuelCapacity, 0, 1);
@@ -1947,11 +1947,50 @@ function skyDisc(x, y, r, col, rim) {             // 天体底盘 + 大气辉光
 function skyShade(x, y, r) {                      // 晨昏线：右侧阴影 + 轮廓
   ctx.save();
   ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.clip();
-  ctx.fillStyle = 'rgba(0,0,12,.45)';
-  ctx.beginPath(); ctx.arc(x + r*0.55, y, r, 0, TAU); ctx.fill();
+  const shade=ctx.createLinearGradient(x-r,y-r*.2,x+r,y+r*.35);
+  shade.addColorStop(0,'rgba(236,226,206,.12)');
+  shade.addColorStop(.45,'rgba(1,6,13,.06)');
+  shade.addColorStop(.76,'rgba(1,6,13,.53)');
+  shade.addColorStop(1,'rgba(1,6,13,.88)');
+  ctx.fillStyle=shade;ctx.fillRect(x-r,y-r,r*2,r*2);
   ctx.restore();
-  ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.stroke();
+}
+const PLANET_SURFACES={
+  earth:['#24486b','#789782','#9aafbc','#83a9c3'],
+  mars:['#a06e51','#6f4135','#d3ab88','#b78970'],
+  jupiter:['#af967a','#725743','#e1c4a4','#c1a98c'],
+  charon:['#777883','#4b4a50','#b1a6a2','#9ea5b0'],
+};
+function drawPlanetSurface(kind,x,y,r) {
+  const [base,dark,light,rim]=PLANET_SURFACES[kind];
+  skyDisc(x,y,r,base,rim);
+  ctx.save();ctx.beginPath();ctx.arc(x,y,r,0,TAU);ctx.clip();
+  if(kind==='jupiter'){
+    for(let band=0;band<18;band++){
+      const by=y-r+band*r/9;
+      ctx.strokeStyle=band%4===0?dark:light;ctx.globalAlpha=.12+.09*Math.sin(band*3);
+      ctx.lineWidth=r*(.05+.039*(band%3));
+      ctx.beginPath();ctx.moveTo(x-r,by);ctx.bezierCurveTo(x-r*.3,by+r*.08,x+r*.2,by-r*.09,x+r,by);ctx.stroke();
+    }
+    ctx.globalAlpha=.45;ctx.fillStyle='#9c6150';ctx.beginPath();
+    ctx.ellipse(x+r*.24,y+r*.29,r*.21,r*.075,-.07,0,TAU);ctx.fill();
+  }else{
+    for(let i=0;i<26;i++){
+      const seed=Math.sin(i*17.31+1)*43758.5453;
+      const px=x+(seed-Math.floor(seed)-.5)*r*2;
+      const py=y+Math.cos(i*2.4)*r*.94;
+      const width=r*(.055+.045*(i%5));
+      ctx.globalAlpha=.24;ctx.fillStyle=i%3===0?light:dark;ctx.beginPath();
+      for(let n=0;n<8;n++){
+        const angle=n*TAU/8;
+        const extent=width*(.64+.29*Math.sin(n*2.1+i));
+        const vx=px+Math.cos(angle)*extent,vy=py+Math.sin(angle)*extent*.64;
+        if(n===0)ctx.moveTo(vx,vy);else ctx.lineTo(vx,vy);
+      }
+      ctx.closePath();ctx.fill();
+    }
+  }
+  ctx.restore();skyShade(x,y,r);
 }
 function drawSkyBodies() {                        // 每关天象：正确的天体挂在正确的天上
   const bodies = levelDef.theme.skyBodies;
@@ -1974,48 +2013,8 @@ function drawSkyBodies() {                        // 每关天象：正确的天
       rg.addColorStop(0, b.c); rg.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = rg;
       ctx.beginPath(); ctx.arc(x, y, b.r*3, 0, TAU); ctx.fill();
-    } else if (b.kind === 'earth') {
-      skyDisc(x, y, b.r, '#3a7fd8', '#9fd8ff');
-      ctx.save();
-      ctx.beginPath(); ctx.arc(x, y, b.r, 0, TAU); ctx.clip();
-      ctx.fillStyle = 'rgba(74,154,88,.8)';
-      ctx.beginPath(); ctx.ellipse(x-b.r*0.25, y-b.r*0.3, b.r*0.45, b.r*0.3, 0.5, 0, TAU); ctx.fill();
-      ctx.beginPath(); ctx.ellipse(x+b.r*0.35, y+b.r*0.25, b.r*0.35, b.r*0.25, -0.4, 0, TAU); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,.55)';
-      ctx.beginPath(); ctx.ellipse(x-b.r*0.1, y+b.r*0.4, b.r*0.5, b.r*0.12, 0.3, 0, TAU); ctx.fill();
-      ctx.beginPath(); ctx.ellipse(x+b.r*0.2, y-b.r*0.45, b.r*0.4, b.r*0.1, -0.2, 0, TAU); ctx.fill();
-      ctx.restore();
-      skyShade(x, y, b.r);
-    } else if (b.kind === 'mars') {
-      skyDisc(x, y, b.r, '#d86a3a', '#ffb080');
-      ctx.save();
-      ctx.beginPath(); ctx.arc(x, y, b.r, 0, TAU); ctx.clip();
-      ctx.fillStyle = 'rgba(168,68,42,.8)';
-      ctx.beginPath(); ctx.ellipse(x-b.r*0.2, y+b.r*0.15, b.r*0.5, b.r*0.28, 0.3, 0, TAU); ctx.fill();
-      ctx.beginPath(); ctx.ellipse(x+b.r*0.3, y-b.r*0.2, b.r*0.3, b.r*0.2, -0.5, 0, TAU); ctx.fill();
-      ctx.fillStyle = '#f0e8e0';
-      ctx.beginPath(); ctx.ellipse(x, y-b.r*0.85, b.r*0.3, b.r*0.12, 0, 0, TAU); ctx.fill();
-      ctx.restore();
-      skyShade(x, y, b.r);
-    } else if (b.kind === 'jupiter') {
-      skyDisc(x, y, b.r, '#e0c090', '#ffd8a8');
-      ctx.save();
-      ctx.beginPath(); ctx.arc(x, y, b.r, 0, TAU); ctx.clip();
-      for (let k = 0; k < 5; k++) {
-        ctx.fillStyle = k % 2 ? 'rgba(168,120,80,.75)' : 'rgba(224,202,160,.55)';
-        ctx.fillRect(x - b.r, y - b.r + k * b.r * 0.42, b.r*2, b.r*0.2);
-      }
-      ctx.fillStyle = 'rgba(200,80,50,.85)';
-      ctx.beginPath(); ctx.ellipse(x + b.r*0.25, y + b.r*0.25, b.r*0.3, b.r*0.14, 0, 0, TAU); ctx.fill();
-      ctx.restore();
-      skyShade(x, y, b.r);
-    } else if (b.kind === 'charon') {
-      skyDisc(x, y, b.r, '#a8a8b0', '#c8c8d0');
-      ctx.save();
-      ctx.beginPath(); ctx.arc(x, y, b.r, 0, TAU); ctx.clip();
-      ctx.fillStyle = 'rgba(120,120,132,.8)';
-      ctx.beginPath(); ctx.ellipse(x - b.r*0.2, y + b.r*0.1, b.r*0.45, b.r*0.3, 0.4, 0, TAU); ctx.fill();
-      ctx.restore();
+    } else if (PLANET_SURFACES[b.kind]) {
+      drawPlanetSurface(b.kind,x,y,b.r);
     } else if (b.kind === 'phobos') {             // 火卫一：快速划过火星天空
       const xx = mod(b.x * W + time * 9, W + 200) - 100;
       ctx.fillStyle = '#9a8a7a'; ctx.strokeStyle = '#6a5a4a'; ctx.lineWidth = 1;
@@ -2144,6 +2143,11 @@ function drawMultiplier(left, top, value, v) {
   ctx.fillText('得分×' + value, left + 23*u, top + 6*u);
   ctx.restore();
 }
+function launchTowerAnchor(cx,width,zoom) {
+  const x=cx+width/2+16/zoom;
+  const leftY=heightAt(x-10/zoom),rightY=heightAt(x+10/zoom);
+  return {x,leftY,rightY,top:Math.min(leftY,rightY)-44/zoom};
+}
 function drawLaunchPad(cx, groundY, w, v, p) {     // 地面发射台：台板+着陆圈+桁架塔
   const slabH = 7/v.z;
   ctx.fillStyle = 'rgba(30,26,16,.94)';
@@ -2165,20 +2169,23 @@ function drawLaunchPad(cx, groundY, w, v, p) {     // 地面发射台：台板+�
   ctx.fillRect(cx + w/2 - 4/v.z, groundY - 3.5/v.z, 4/v.z, 3/v.z);
   ctx.globalAlpha = 1;
   // 桁架发射塔（台面右侧、贴地而立）
-  const tx = cx + w/2 + 16/v.z, th = 44/v.z, tw = 10/v.z;
+  const {x:tx,leftY,rightY,top}=launchTowerAnchor(cx,w,v.z);
+  const tw=10/v.z, bottom=Math.min(leftY,rightY);
+  const th=bottom-top;
   ctx.strokeStyle = 'rgba(205,215,235,.85)'; ctx.lineWidth = 2/v.z;
   ctx.beginPath();
-  ctx.moveTo(tx - tw, groundY); ctx.lineTo(tx - tw, groundY - th);
-  ctx.moveTo(tx + tw, groundY); ctx.lineTo(tx + tw, groundY - th);
+  ctx.moveTo(tx-tw,leftY);ctx.lineTo(tx-tw,top);
+  ctx.moveTo(tx+tw,rightY);ctx.lineTo(tx+tw,top);
+  ctx.moveTo(tx-tw,leftY);ctx.lineTo(tx+tw,rightY);
   for (let k = 0; k < 3; k++) {
-    const y1 = groundY - th*k/3, y2 = groundY - th*(k+1)/3;
+    const y1=bottom-th*k/3,y2=bottom-th*(k+1)/3;
     ctx.moveTo(tx - tw, y1); ctx.lineTo(tx + tw, y2);
     ctx.moveTo(tx + tw, y1); ctx.lineTo(tx - tw, y2);
   }
   ctx.stroke();
   const bl = 0.5 + 0.5*Math.sin(time*4);
   ctx.globalAlpha = bl; ctx.fillStyle = '#ff5c5c';
-  ctx.beginPath(); ctx.arc(tx, groundY - th - 3/v.z, 2.6/v.z, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.arc(tx, top - 3/v.z, 2.6/v.z, 0, TAU); ctx.fill();
   ctx.globalAlpha = 1;
   drawMultiplier(cx + w/2 + 4/v.z, groundY + 10/v.z, p.m, v);
   drawChevron(cx, groundY - 56/v.z, v);
@@ -2340,6 +2347,12 @@ function drawOcean(v) {
     ctx.stroke();
   }
 }
+function catchArmPose(side,closure,body) {
+  const lugX=body.x-pads[0].cx+14*Math.sin(body.a)+side*9*Math.cos(body.a);
+  const lugY=body.y-pads[0].y-14*Math.cos(body.a)+side*9*Math.sin(body.a);
+  const tip=side*18+(lugX-side*18)*closure;
+  return {tip,end:tip+31*side,y:2+lugY*closure};
+}
 function drawPads(v) {
   if (isTower()) {
     const p=pads[0],caught=missionResult?.landed, k=caught?clamp((1.8-stateT)/0.2,0,1):0;
@@ -2351,13 +2364,13 @@ function drawPads(v) {
     for(let y=-57;y<99;y+=13){ctx.strokeRect(-65,y,16,13);ctx.beginPath();ctx.moveTo(-65,y);ctx.lineTo(-49,y+13);ctx.stroke();}
     ctx.fillStyle='#263743';ctx.fillRect(-65,106,132,8);
     ctx.fillStyle='#516875';ctx.fillRect(45,0,4,106);
-    const lug=lugState(ship);
     for(const side of [-1,1]){
-      const tip=side*18*(1-k)+(lug.dx+side*8*Math.cos(ship.a))*k;
-      const h=k*(lug.y-p.y+side*8*Math.sin(ship.a));
-      ctx.strokeStyle='#4c524e';ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(side*49,2);ctx.lineTo(tip,h+2);ctx.stroke();
-      ctx.strokeStyle='#d0a56a';ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(side*49,0.8);ctx.lineTo(tip,h+0.8);ctx.stroke();
-      ctx.fillStyle='#bd9a61';ctx.fillRect(tip-2,h,4,5);
+      const arm=catchArmPose(side,k,ship);
+      ctx.fillStyle='#637681';ctx.fillRect(Math.min(side*49,arm.end),arm.y-1.5,Math.abs(side*49-arm.end),3);
+      ctx.fillStyle='#374953';ctx.fillRect(side*49-5,arm.y-6,10,12);
+      ctx.fillStyle='#445257';ctx.fillRect(Math.min(arm.tip,arm.end),arm.y-2.5,31,5);
+      ctx.fillStyle='#d0a56a';ctx.fillRect(Math.min(arm.tip,arm.end),arm.y-2.5,31,1.2);
+      ctx.fillStyle='#bd9a61';ctx.fillRect(arm.tip-2,arm.y-3,4,6);
     }
     ctx.restore();return;
   }
@@ -2401,7 +2414,7 @@ function drawPads(v) {
     const cx = padCX(p, time), y = padY(p, time);
     if (!Number.isFinite(cx) || !Number.isFinite(y)) continue;
     const x1 = cx - p.w/2, x2 = cx + p.w/2;
-    if (x2 < v.l - 80 || x1 > v.r + 80) continue;
+    if (x2+52/v.z < v.l || x1-52/v.z > v.r) continue;
     if (p.moving && levelDef.type === 'terrain') drawRaft(cx, y, p.w, v, p);       // 冰筏
     else if (levelDef.type === 'float') drawSkyDock(cx, y, p.w, v, p);             // 天空坞站
     else drawLaunchPad(cx, y, p.w, v, p);                                          // 地面发射台
@@ -2734,6 +2747,16 @@ function drawStarshipSkin() {
   for (const x of [-3, -1.8, -0.6, 0.6, 1.8, 3]) shipDot(x, 8.2, 0.55, '#9fd8ff', 0.8);
   shipLine(0, -13, 0, 7, '#ffffff', 0.55, 0.3);
 }
+function drawSuperHeavySkin() {
+  for(let y=-18;y<=14;y+=4) shipLine(-5.5,y,5.5,y,'#35434b',.65,.72);
+  shipPoly([[-5,14],[5,14],[4,20],[-4,20]],'#3c474e','#7b8d96',.75);
+  for(const side of [-1,1]){
+    shipPoly([[side*5.7,-16],[side*8.8,-16],[side*8.8,-12],[side*5.7,-12]],'#566874','#95a9b3',.65);
+    for(let j=0;j<3;j++)shipLine(side*6,-15+j,side*8.6,-15+j,'#26343d',.55);
+    shipLine(side*6,-14,side*9,-14,'#edbd69',1.15);
+    shipLine(side*4.5,-7,side*4.5,12,'#a5b7bf',.65,.74);
+  }
+}
 function drawShip() {
   if (!ship.visible) return;
   const sk = currentModel();
@@ -2774,8 +2797,15 @@ function drawShip() {
   ctx.closePath();
   const left=shipPt(-6,-2),right=shipPt(6,1);
   const metal=ctx.createLinearGradient(...left,...right);
-  metal.addColorStop(0,'#43545b');metal.addColorStop(0.29,'#e2e8e5');
-  metal.addColorStop(0.47,'#a9b8bb');metal.addColorStop(1,'#384451');
+  if(isTower()){
+    metal.addColorStop(0,'#253440');metal.addColorStop(.18,'#667784');
+    metal.addColorStop(.36,'#c0c9ce');metal.addColorStop(.43,'#e2e7e7');
+    metal.addColorStop(.55,'#64737f');metal.addColorStop(.76,'#46535d');
+    metal.addColorStop(1,'#77909d');
+  }else{
+    metal.addColorStop(0,'#43545b');metal.addColorStop(.29,'#e2e8e5');
+    metal.addColorStop(.47,'#a9b8bb');metal.addColorStop(1,'#384451');
+  }
   ctx.fillStyle=metal;ctx.fill();
   ctx.strokeStyle='#c3ccd0';ctx.lineWidth=0.7/cam.zoom;ctx.stroke();
   sk.draw();
@@ -2791,6 +2821,34 @@ function drawShip() {
     ctx.globalAlpha = 1;
   }
 }
+function drawSplash() {
+  const age=Math.max(0,1.7-stateT);
+  const y=waterY(ship.x,time);
+  ctx.save();
+  ctx.strokeStyle='#a7dae2';ctx.lineWidth=1/cam.zoom;
+  for(let i=0;i<3;i++){
+    const t=age-i*.13;
+    if(t<0 || t>1.3)continue;
+    ctx.globalAlpha=(1-t/1.3)*.6;ctx.beginPath();
+    ctx.ellipse(ship.x,y,5+t*65,1+t*9,0,0,TAU);ctx.stroke();
+  }
+  ctx.fillStyle='#d7f3f5';
+  for(let i=0;i<20;i++){
+    const vx=Math.sin(i*17.3)*45,vy=26+i%7*9;
+    const rise=vy*age-62*age*age;
+    if(rise<=0)continue;
+    ctx.globalAlpha=Math.max(0,1-age)*.85;
+    ctx.beginPath();ctx.ellipse(ship.x+vx*age,y-rise,1.2,1.8,0,0,TAU);ctx.fill();
+  }
+  if(age<1){
+    const radius=5+25*age;
+    ctx.translate(ship.x,y-radius*.4);ctx.scale(1.7,1);
+    const mist=ctx.createRadialGradient(0,0,0,0,0,radius);
+    mist.addColorStop(0,'rgba(214,242,244,.55)');mist.addColorStop(1,'rgba(214,242,244,0)');
+    ctx.globalAlpha=1-age;ctx.fillStyle=mist;ctx.fillRect(-radius,-radius,2*radius,2*radius);
+  }
+  ctx.restore();
+}
 function drawWorld() {
   const v = viewBounds();
   if (levelDef.type === 'float') drawCloudBands(v);
@@ -2803,8 +2861,8 @@ function drawWorld() {
   drawMeteorWarnings(v);
   drawMeteors(v);
   drawPrediction();
-  drawParticles(v);
-  drawFrags();
+  if(isRecovery() && !isTower() && missionResult?.reason==='落入海面' && state==='crashed') drawSplash();
+  else { drawParticles(v);drawFrags(); }
   drawShip();
 }
 
@@ -2836,6 +2894,41 @@ function drawMiniShip(x, y, s, on) {
 function hudLiftForTouch() {
   return safeBottom + (touchUI() ? clamp(W*0.22, 54, 88) + 20 : 0);
 }
+function fuelHudLayout(hudX, headY, hudLift, compact) {
+  const project=(x,y)=>({x:(x-cam.x)*cam.zoom+W/2,y:(y-cam.y)*cam.zoom+H*.42});
+  const zones=[];
+  const append=(x,y,left,right,top,bottom)=>{
+    const p=project(x,y);
+    zones.push({x:p.x-left,y:p.y-top,w:left+right,h:top+bottom});
+  };
+  for(const p of pads){
+    const x=P?P.cx:padCX(p,time), y=P?P.cy-P.R:padY(p,time);
+    const span=P?P.R*Math.sin(p.arc)*cam.zoom:p.w*cam.zoom/2;
+    if(!Number.isFinite(x+y+span))continue;
+    if(isTower()) append(x,y,72*cam.zoom,72*cam.zoom,63*cam.zoom,116*cam.zoom);
+    else if(isRecovery()) append(x,y,span+8,span+8,10,51*cam.zoom);
+    else {
+      append(x,y,span+6,span+6,10,12);
+      if(terrain && !p.moving){
+        const a=launchTowerAnchor(x,p.w,cam.zoom),base=Math.max(a.leftY,a.rightY);
+        append(a.x,a.top,13,13,8,(base-a.top)*cam.zoom+3);
+      }else append(x,y,span+6,span+42,27,16);
+    }
+  }
+  append(ship.x,ship.y,18*cam.zoom,18*cam.zoom,24*cam.zoom,23*cam.zoom);
+  const width=Math.min(compact?132:170,W-safeLeft-safeRight-154);
+  const options=[
+    {x:hudX,y:H-hudLift-58,w:width,h:32},
+    {x:hudX,y:headY+40,w:Math.min(width,120),h:28},
+    {x:Math.max(hudX,safeLeft+64),y:safeTop+10,w:W<380?54:72,h:27},
+  ];
+  const overlap=(a,b)=>Math.max(0,Math.min(a.x+a.w+5,b.x+b.w)-Math.max(a.x-5,b.x))*
+    Math.max(0,Math.min(a.y+a.h+4,b.y+b.h)-Math.max(a.y-4,b.y));
+  return options.reduce((best,next)=>{
+    const cost=zones.reduce((sum,zone)=>sum+overlap(next,zone),0);
+    return !best||cost<best.cost?{...next,cost}:best;
+  },null);
+}
 function drawHUD() {
   if (state !== 'playing') return;
   // 触屏设备：触控按钮占据底部，燃料与速度信息整体上移，避免与按钮重叠
@@ -2852,19 +2945,19 @@ function drawHUD() {
   drawMiniShip(hudR - 24, headY + 7, 1.25, free || lives > 0);
   if (muted) hudText('静音', W/2, safeTop + 35, 10, '#7fb0d8', 'center');
 
-  const fw = compactHUD ? 132 : 170;
-  const fh = compactHUD ? 8 : 12;
+  const fuelHud=fuelHudLayout(hudX,headY,hudLift,compactHUD);
+  const fx=fuelHud.x,barY=fuelHud.y+15,fw=fuelHud.w;
+  const fh=compactHUD||fuelHud.h<32?8:12;
   const fr = ship.fuel / ship.fuelCapacity;
   ctx.globalAlpha = 0.9;
-  ctx.strokeStyle = '#7c9ea7'; ctx.lineWidth = 1; ctx.strokeRect(18 + safeLeft, H-40-hudLift, fw, fh);
+  ctx.strokeStyle = '#7c9ea7'; ctx.lineWidth = 1; ctx.strokeRect(fx,barY,fw,fh);
   ctx.fillStyle = fr > 0.5 ? '#56d9ff' : fr > 0.25 ? '#ffb347' :
                   (Math.sin(time*8) > 0 ? '#ff4d4d' : '#802020');
-  ctx.fillRect(19 + safeLeft, H-39-hudLift, (fw-2) * fr, fh-2);
+  ctx.fillRect(fx+1,barY+1,(fw-2)*fr,fh-2);
   ctx.fillStyle='rgba(7,17,25,.50)';
-  for(let tick=1;tick<5;tick++)ctx.fillRect(18+safeLeft+fw*tick/5,H-39-hudLift,1,fh-2);
+  for(let tick=1;tick<5;tick++)ctx.fillRect(fx+fw*tick/5,barY+1,1,fh-2);
   ctx.globalAlpha = 1;
-  hudText('FUEL ' + String(Math.round(ship.fuel)).padStart(3, '0'), 18 + safeLeft,
-          H - (compactHUD ? 56 : 58) - hudLift, compactHUD ? 10 : 12,
+  hudText('FUEL ' + String(Math.round(ship.fuel)).padStart(3, '0'), fx, fuelHud.y, compactHUD||fuelHud.h<32?10:12,
           fr < 0.25 ? '#ff6b5e' : '#7fb0d8');
 
   let alt;
@@ -3837,9 +3930,9 @@ function frame(now) {
 
 /* ---------- 渲染入口 ---------- */
 const BUILD = Object.freeze({
-  version:'v2.0.15-rc.2b',
-  number:'2.0.15.2b',
-  builtAt:'2026-11-24T16:37:16Z',
+  version:'v2.0.15-rc.2c',
+  number:'2.0.15.2c',
+  builtAt:'2026-11-26T08:18:32Z',
   channel:'候选预览',
 });
 const menuVersion = document.getElementById('menuVersion');
