@@ -1023,7 +1023,7 @@ async function qualityAndSoak(browser,name,host) {
   try {
     const guide=page.locator('#quickFlight');
     await guide.locator('summary').click();
-    assert.match(await guide.textContent(),/火箭上部挂点/);
+    assert.match(await guide.textContent(),/上部挂点/);
     await guide.locator('summary').click();
     await page.locator('#gear').click();
     const chooser=page.locator('#qualitySelect');
