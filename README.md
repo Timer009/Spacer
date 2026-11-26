@@ -137,3 +137,21 @@ vector-lander/index.html   ← 游戏本体（唯一必需文件）
 
 - 游戏仍可直接运行。安装 Playwright、Chromium、WebKit 和 Firefox 后，可运行 `node tests/mobile-hotfix.cjs` 复查十关、三型物理和移动端布局
 - 存档使用 `localStorage`，清浏览器数据会丢失进度
+
+---
+
+## License
+
+Spacer 的原创代码与文档（包括 `vector-lander/`、`legacy/`、`tests/`、`index.html` 及本 README）采用 [Apache License 2.0](LICENSE) 授权。
+
+- 允许使用、修改、分发及商业使用；分发时须保留版权与许可声明，并附带 [`LICENSE`](LICENSE) 副本。
+- 软件按“现状”提供，不附带任何明示或暗示的担保，完整条款以 `LICENSE` 为准。
+- Apache-2.0 不授予项目名称、标识或商标的使用权。
+
+**第三方素材与依赖**
+
+- 仓库未内置任何第三方图片、字体或音频素材：图标为内联 SVG data URI，音效全部由 Web Audio 程序化合成。
+- `tests/mobile-hotfix.cjs` 按需调用外部安装的 Playwright（Apache-2.0）；Playwright 不随本仓库分发，遵循其自身许可证。
+- 游戏在题材与玩法上致敬 Spacewar!、Lunar Lander 与 Asteroids，但未包含其代码或素材。
+
+Copyright © 2026 Timer009。
