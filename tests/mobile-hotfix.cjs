@@ -1138,6 +1138,74 @@ async function coreAdjudication(browser,name,host) {
     console.log(name+' core adjudication '+JSON.stringify(result)+' PASS');
   }finally{await page.close();}
 }
+async function releaseCandidateChecks(browser,name,host) {
+  const [page,errors]=await open(browser,host,'/fix',1280,720,false,instrument,false,{
+    vl_cfg:{unlockAll:true,vxMax:21},
+  });
+  const failed=[];
+  const hosts=new Set();
+  page.on('request',request=>hosts.add(new URL(request.url()).origin));
+  page.on('requestfailed',request=>failed.push(request.url()));
+  page.on('response',response=>{if(response.status()>=400)failed.push(response.status()+' '+response.url());});
+  try{
+    await page.reload();
+    await page.locator('#titleScreen').waitFor();
+    const version=await page.evaluate(()=>BUILD.version);
+    assert.match(version,/^v2\.0\.\d+(?:-rc\.[0-9a-z]+)?$/);
+    assert.equal(await page.locator('#menuVersion').textContent(),version);
+    const guide=page.locator('#quickFlight');
+    await guide.locator('summary').click();
+    await page.waitForFunction(()=>document.getElementById('guideLimits').textContent.includes('21'));
+    await page.locator('#gear').click();
+    assert.match(await page.locator('#buildDetails').textContent(),new RegExp(version.replaceAll('.','\\.')));
+    await page.evaluate(()=>{
+      const slider=PANEL_ROWS.find(row=>row.key==='vxMax').inpEl;
+      slider.value='22';slider.dispatchEvent(new Event('input',{bubbles:true}));
+    });
+    await page.locator('#btnClose').click();
+    assert.match(await page.locator('#guideLimits').textContent(),/22/);
+    const results=await page.evaluate(()=>{
+      __frames.frozen=true;
+      const check=(condition,label)=>{if(!condition)throw Error(label);};
+      const campaignData=()=>JSON.stringify([score,lives,progress,stats,best,...['vl_progress','vl_stats','vl_best'].map(k=>localStorage.getItem(k))]);
+      const save=campaignData();
+      startMission(RECOVERY_MISSIONS[0]);game.draw();
+      check(!flightIntro.hidden&&loadJSON('vl_flight_intro_seen',false),'first flight hint');
+      document.getElementById('skipFlightIntro').click();
+      retryMission();game.draw();check(flightIntro.hidden,'hint stays dismissed');
+      gotoHome();document.getElementById('replayFlightIntro').click();
+      startMission(RECOVERY_MISSIONS[1]);game.draw();check(!flightIntro.hidden,'replay hint');
+      const prepare=()=>{
+        game.tick(1220);game.teleport(pads[0].cx+135,-550,6,0);ship.fuel=0;
+      };
+      prepare();game.tick(1480);game.draw();check(fuelDecision.hidden,'fuel timer boundary');
+      game.tick(40);game.draw();check(!fuelDecision.hidden,'fuel notice appears');
+      const x=ship.x;
+      document.getElementById('driftFuelRun').click();game.tick(1700);game.draw();
+      check(fuelDecision.hidden&&state==='playing'&&ship.x>x,'drift continues with no repeated notice');
+      retryMission();prepare();game.tick(1520);game.draw();
+      document.getElementById('endFuelRun').click();
+      check(state==='recovery'&&campaignData()===save,'explicit abort returns without modifying campaign');
+      startMission(RECOVERY_MISSIONS[0]);game.tick(1220);
+      const outside=pads[0].cx+185;
+      game.teleport(outside,waterY(outside,time)-9.03,0,8,0);ship.fuel=0;emptyFuelTime=1.49;
+      game.tick(25);game.draw();
+      check(state==='crashed'&&missionResult.reason==='落入海面'&&fuelDecision.hidden,'water contact before fuel prompt');
+      startMission(CAMPAIGN_MISSIONS[0]);game.tick(1220);
+      const pad=game.padProbe().probes[0];
+      game.teleport(pad.cx,pad.y-9.02,0,6,0);ship.fuel=0;emptyFuelTime=1.49;game.tick(25);game.draw();
+      check(state==='landed'&&fuelDecision.hidden,'landing before fuel prompt');
+      startMission(CAMPAIGN_MISSIONS[5]);game.tick(1220);
+      game.teleport(18000,-500,0,0);ship.fuel=0;emptyFuelTime=1.49;game.tick(10);game.draw();
+      check(ship.fuel>0&&fuelDecision.hidden,'signal loss before fuel prompt');
+      return 'guide, first/replayed hint, no-fuel boundary, inertia, abort, landing/crash/signal priority';
+    });
+    assert.deepEqual([...hosts],[host]);
+    assert.deepEqual(failed,[]);
+    assert.deepEqual(errors,[]);
+    console.log(name+' release '+version+': desktop, single-origin resources, '+results+' PASS');
+  }finally{await page.close();}
+}
 async function performanceSample(browser,name,host) {
   const values = [];
   for (const route of ['/release','/fix']) {
@@ -1206,6 +1274,7 @@ async function performanceSample(browser,name,host) {
         await towerCatch(browser,name,host);
         await settlementInput(browser,name,host);
         await coreAdjudication(browser,name,host);
+        await releaseCandidateChecks(browser,name,host);
         if(name==='chromium'||name==='webkit') await qualityAndSoak(browser,name,host);
         if (name === 'chromium' || name === 'webkit') await performanceSample(browser,name,host);
       } finally { await browser.close(); }
