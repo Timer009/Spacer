@@ -12,7 +12,7 @@ vector-lander/index.html   ← 游戏本体（唯一必需文件）
 
 ## 开始试玩
 
-当前正式游戏可直接打开 GitHub Pages。候选版本请使用 Bridge 版本登记表给出的固定提交链接，在主菜单左下角核对版本。手机可在设置中切换兼容横屏，固定地址也支持追加 `?compat=1`。 [正式游戏](https://timer009.github.io/Spacer/vector-lander/) · [版本登记表](https://github.com/Timer009/spacer-gai-bridge/blob/main/RELEASE-VERSIONS.md)
+当前正式游戏可直接打开 GitHub Pages。候选版本请使用对应发布报告给出的固定提交链接，在主菜单左下角核对版本。手机可在设置中切换兼容横屏，固定地址也支持追加 `?compat=1`。 [正式游戏](https://timer009.github.io/Spacer/vector-lander/) · [正式版本登记](https://github.com/Timer009/spacer-gai-bridge/blob/main/RELEASE-VERSIONS.md)
 
 主菜单的「玩法指南」介绍操作、仪表和回收规则，可预约下次飞行重看简短引导。燃料耗尽约 1.5 秒后，在任务仍进行时可继续随惯性漂流，或结束任务返回对应模式入口。
 
