@@ -12,9 +12,9 @@
   :root{--safe-t:env(safe-area-inset-top, 0px);--safe-b:env(safe-area-inset-bottom, 0px);--safe-l:env(safe-area-inset-left, 0px);--safe-r:env(safe-area-inset-right, 0px)}
   html,body{margin:0;padding:0;height:100%;background:#04060e;overflow:hidden;
     overscroll-behavior:none;-webkit-tap-highlight-color:transparent;
-    -webkit-text-size-adjust:100%;text-size-adjust:100%;
-    -webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
-  body,body *{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+    -webkit-text-size-adjust:100%;text-size-adjust:100%}
+  #cv,.tbtn,.tbtn *{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;
+    -webkit-tap-highlight-color:transparent;touch-action:none}
   #viewportHost{position:fixed;inset:0;overflow:hidden}
   #gameViewport{position:absolute;inset:0;overflow:hidden;transform-origin:0 0}
   #gameViewport.virtual-landscape{transform:translateX(var(--host-width)) rotate(90deg)}
@@ -25,16 +25,16 @@
   .iconBtn{display:flex;align-items:center;justify-content:center;box-sizing:border-box;
     width:44px;height:44px;padding:0;border-radius:50%;
     border:1px solid rgba(120,220,255,.65);background:rgba(8,20,38,.92);color:#bfe9ff;
-    touch-action:none;cursor:pointer}
+    touch-action:manipulation;cursor:pointer}
   .iconBtn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;
     stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
   .tbtn{position:absolute;bottom:calc(12px + var(--safe-b));width:clamp(48px,19%,76px);
-    height:auto;min-height:44px;aspect-ratio:1;display:none;z-index:10;background:rgba(8,20,38,.72)}
+    height:auto;min-height:44px;aspect-ratio:1;display:none;z-index:10;touch-action:none;background:rgba(8,20,38,.72)}
   .tbtn.active{background:#235892}
   body.touch-ui.touch-play .tbtn{display:flex}
-  #btnL{left:calc(12px + var(--safe-l))}
-  #btnR{left:calc(32px + var(--safe-l) + clamp(48px,19%,76px))}
-  #btnT{right:calc(12px + var(--safe-r));width:clamp(54px,22%,88px);
+  #btnL{left:calc(var(--flight-inset,12px) + var(--safe-l))}
+  #btnR{left:calc(var(--flight-inset,12px) + 20px + var(--safe-l) + clamp(48px,19%,76px))}
+  #btnT{right:calc(var(--flight-inset,12px) + var(--safe-r));width:clamp(54px,22%,88px);
     color:#ffc35e;border-color:#ffc35e}
   #statsBtn,#pauseBtn{position:absolute;right:calc(12px + var(--safe-r));
     top:calc(8px + var(--safe-t));display:none;z-index:10}
@@ -71,14 +71,23 @@
     overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;
     background:#0b1426;border:1px solid rgba(120,220,255,.4);
     border-radius:8px;padding:12px 14px;z-index:12;color:#bfe0ff;
-    -webkit-touch-callout:none;user-select:none;
     font:13px 'Courier New','Microsoft YaHei',monospace}
   .virtual-landscape #panel,.virtual-landscape .modeScreen{touch-action:none;overscroll-behavior:contain}
   #quickFlight{margin-top:8px;color:#b4cce2}
   #quickFlight summary{min-height:44px;display:flex;align-items:center;cursor:pointer;color:#a8d7d8}
   #quickFlight summary::before{content:'+';margin-right:8px}
   #quickFlight[open] summary::before{content:'−'}
-  #quickFlight p{font-size:12px;margin-bottom:6px}
+  #quickFlight p{font-size:12px;line-height:1.55;margin-bottom:6px}
+  .flightNotice{position:absolute;z-index:5;left:50%;transform:translateX(-50%);
+    display:flex;justify-content:center;align-items:center;gap:6px;
+    color:#e2f5f6;background:#111d29;border:1px solid #486472;border-radius:8px;padding:3px 5px;
+    font:12px 'Segoe UI','Microsoft YaHei',sans-serif}
+  .flightNotice[hidden]{display:none}
+  .flightNotice button{min-height:44px;min-width:44px;white-space:nowrap;color:#e2f5f6;background:#234150;
+    border:1px solid #658d9e;border-radius:5px;padding:2px 7px;font:inherit;touch-action:manipulation}
+  #flightIntro{top:calc(56px + var(--safe-t));max-width:calc(100% - 28px - var(--safe-l) - var(--safe-r))}
+  #fuelDecision{top:calc(6px + var(--safe-t))}
+  #fuelDecision.bottom-dock{top:auto;left:var(--fuel-center);bottom:calc(12px + var(--safe-b))}
   #titleScreen{bottom:calc(34px + var(--safe-b))}
   #menuVersion{position:absolute;left:calc(16px + var(--safe-l));bottom:calc(8px + var(--safe-b));
     color:#aac1d7;font:12px monospace;pointer-events:none}
@@ -194,10 +203,16 @@
       <button type="button" class="modeCard" data-mode="recovery"><strong>回收挑战</strong><span>移动甲板着陆与双臂捕获</span></button>
     </div>
     <details id="quickFlight">
-      <summary>操作与着陆条件</summary>
-      <p>用左右键转向，按住上键或空格点火。触屏用左侧转向、右侧点火。松手后飞船仍会沿原方向运动。</p>
-      <p>先在自由飞行练习。对准发光平台，保持直立，减小横移和下降速度。战役默认限制为横移 26、下降 36，安全倾角约 35°。</p>
-      <p>海上回收看相对甲板速度。塔架挑战让火箭上部挂点进入双臂之间。各限制见挑战卡片。</p>
+      <summary>玩法指南</summary>
+      <p><strong>三种玩法</strong>　战役逐站解锁并记录成绩。自由飞行可选场景和兼容飞船。回收挑战有移动甲板着陆与双臂捕获，支持重试。</p>
+      <p id="guideModels"></p>
+      <p><strong>操作</strong>　电脑用左右键或 A/D 转向，按住上键、W 或空格点火，按 P 暂停。手机左侧转向、右侧点火，支持同时按住。松手后惯性仍在。</p>
+      <p><strong>HUD</strong>　FUEL 是剩余燃料，ALT 是场景高度读数。VX、VY 是横移与下降速度。回收场景显示相对运动或挂点高差。预测点线按当前输入估算后续轨迹，输入或环境变化会更新。</p>
+      <p id="guideLimits"></p>
+      <p><strong>计分</strong>　战役平台倍率作用于基础分，余油与低速着陆另有奖励。</p>
+      <p><strong>海上回收</strong>　对正船身和甲板，让支脚先接触，控制相对横移、下降速度与倾角。<strong>塔架捕获</strong>　从双臂上方进入，将两个上部挂点对准窗口，避免撞臂和塔身。具体阈值见对应挑战卡片。</p>
+      <button type="button" id="replayFlightIntro" class="skinBtn">下次飞行显示简短引导</button>
+      <output id="introReplayStatus" role="status"></output>
     </details>
   </div>
 </section>
@@ -243,6 +258,14 @@
   <button id="rotateCompat" class="rotBtn">开启兼容横屏</button>
   <button id="rotateSkip" class="rotBtn">竖屏也可</button>
   <output id="rotateStatus" class="directionStatus" aria-live="polite"></output>
+</div>
+<div id="flightIntro" class="flightNotice" hidden>
+  <span>先转向，再点火减速。靠近目标时对正，降低横移和下降速度。</span>
+  <button type="button" id="skipFlightIntro">跳过</button>
+</div>
+<div id="fuelDecision" class="flightNotice" aria-label="燃料耗尽" hidden>
+  <button type="button" id="endFuelRun">结束任务</button>
+  <button type="button" id="driftFuelRun">继续漂流</button>
 </div>
 <div id="panel" hidden>
   <div id="panelTitle">参数设置</div>
@@ -590,6 +613,12 @@ function resize() {
   viewport.style.setProperty('--safe-b', safeBottom + 'px');
   viewport.style.setProperty('--safe-l', safeLeft + 'px');
   viewport.classList.toggle('landscape-results', W>H);
+  const flightInset=W>H?Math.round((W-safeLeft-safeRight)*.08):12;
+  viewport.style.setProperty('--flight-inset',flightInset+'px');
+  const leftEnd=safeLeft+flightInset+clamp(W*.19,48,76)*2+20;
+  const rightStart=W-safeRight-flightInset-clamp(W*.22,54,88);
+  viewport.classList.toggle('fuel-between-controls',W>H&&rightStart-leftEnd>=150);
+  viewport.style.setProperty('--fuel-center',(leftEnd+rightStart)/2+'px');
   viewport.style.setProperty('--result-bottom', H/2+'px');
   viewport.classList.toggle('wide-menu', W >= H && W - safeLeft - safeRight >= 508);
   document.body.classList.toggle('touch-ui', touchUI());
@@ -732,6 +761,8 @@ const RECOVERY_MISSIONS = [
   {mode:'recovery',modelId:'superheavy', title:'塔架机械臂捕获', vehicle:'Super Heavy', status:'上部挂点 · 开始挑战'},
 ];
 let activeMission = null, missionResult = null;
+let introSeen=loadJSON('vl_flight_intro_seen',false)===true, introAgain=false, introUntil=-Infinity;
+let emptyFuelTime=0, fuelDecisionDismissed=false, fuelAtTop=false;
 const freeChoice = {index:0, modelId:S.skin};
 const TOWER = {type:'tower',name:'塔架捕获 · STARBASE',g:16,fuel:160,ast:0,
   theme:{sky:['#101b30','#517286'],accent:'#f1c777'},hint:'上部挂点对准双臂，减速进入窗口'};
@@ -997,6 +1028,7 @@ function loadLevel(i) {
   state = 'levelIntro'; stateT = 1.2;
 }
 function spawnShip(introSeconds=0) {
+  emptyFuelTime=0;fuelDecisionDismissed=false;fuelAtTop=false;
   predictionDue = -Infinity;
   ship.visible = true; ship.flame = 0; ship.thrusting = false; landPad = null; trail = [];
   ship.modelId = activeMission?.modelId ?? S.skin;
@@ -1063,6 +1095,10 @@ function startMission(mission, chosenModel = mission?.modelId) {
   manualPaused = false;
   cancelViewportInput();
   loadLevel(mission.levelIndex);
+  if(!introSeen || introAgain){
+    introSeen=true;introAgain=false;introUntil=time+6;
+    saveJSON('vl_flight_intro_seen',true);
+  }else introUntil=-Infinity;
   sfxBeep(440, 0.1, 'square', 0.12, 660);
   return true;
 }
@@ -1843,6 +1879,10 @@ function update(dt) {
       break;
     case 'playing':
       physics(dt);
+      if(state==='playing'){
+        if(ship.fuel>0) emptyFuelTime=0;
+        else emptyFuelTime+=dt;
+      }
       camFollow(dt);
       break;
     case 'landed':
@@ -2939,7 +2979,7 @@ function drawHUD() {
   const hudX = 18 + safeLeft, hudR = W - 18 - safeRight;
   const headY = safeTop + 56;
   const free = unlimitedAttempts();
-  hudText(free ? currentModel().label : 'SCORE ' + String(score).padStart(6, '0'), W/2, safeTop + 16, 15, '#e8f4ff', 'center');
+  if (fuelDecision.hidden || fuelDecision.classList.contains('bottom-dock')) hudText(free ? currentModel().label : 'SCORE ' + String(score).padStart(6, '0'), W/2, safeTop + 16, 15, '#e8f4ff', 'center');
   hudText((isRecovery() ? '回收挑战' : free ? '自由飞行' : 'STATION ' + (levelIdx+1) + '/' + NLV) + ' · ' + stationTitle(levelDef), hudX, headY, 12, '#7fb0d8');
   hudText(free ? '∞' : '×' + lives, hudR, headY, 13, '#9df', 'right');
   drawMiniShip(hudR - 24, headY + 7, 1.25, free || lives > 0);
@@ -3695,7 +3735,7 @@ buildModeMenus();
 /* ---------- 输入 ---------- */
 const touchControls = [];
 const keyboard = new Set();
-const activePointers = new Set();
+const activePointers = new Map();
 const heldFlightCodes = new Set();
 const blockedFlightCodes = new Set();
 let settlementUntil = 0;
@@ -3722,7 +3762,7 @@ function lockSettlementInput() {
 window.addEventListener('pointerdown', e => {
   settlementGesture = settlementScreen() && settlementReady() && e.isPrimary && e.button===0 && inSettlementArea(e)
     ? {id:e.pointerId,target:e.target,released:false} : null;
-  activePointers.add(e.pointerId);
+  activePointers.set(e.pointerId,e.target);
 }, true);
 for (const type of ['pointerup','pointercancel']) window.addEventListener(type,e => {
   activePointers.delete(e.pointerId);
@@ -3763,7 +3803,7 @@ window.addEventListener('keydown', e => {
   if (settlementScreen() && (e.repeat || !settlementReady())) { e.preventDefault(); return; }
   if (c === 'Tab' || e.ctrlKey || e.metaKey || e.altKey) return;
   if (debugEnabled && debugPanel.contains(e.target)) return;
-  if (e.target instanceof HTMLButtonElement || e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) {
+  if (e.target instanceof Element && e.target.closest('button,input,select,summary,textarea')) {
     if (c === 'Space' || c === 'Enter' || c.startsWith('Arrow')) return;
   }
   if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(c)) e.preventDefault();
@@ -3795,7 +3835,10 @@ window.addEventListener('keydown', e => {
   if (state === 'playing') {
     if (c === 'KeyP') { if (!e.repeat) togglePause(); return; }
     if (isPaused()) return;
-    if (Object.values(controlCodes).some(codes => codes.includes(c))) keyboard.add(c);
+    if (Object.values(controlCodes).some(codes => codes.includes(c))) {
+      if(e.repeat && !keyboard.has(c))return;
+      keyboard.add(c);introUntil=-Infinity;
+    }
     syncKeys();
     if (c === 'KeyR') { spawnShip(); announce('已重置本关位置', '', '#ffd75e', 1.2); }
   }
@@ -3859,6 +3902,7 @@ function bindTouch(id, key) {
     if (e.button !== 0 || state !== 'playing' || isPaused()) return;
     e.preventDefault();
     audioInit();
+    introUntil=-Infinity;
     pointers.add(e.pointerId);
     syncKeys();
     el.classList.add('active');
@@ -3882,22 +3926,40 @@ function bindTouch(id, key) {
   el.addEventListener('lostpointercapture', off);
 }
 bindTouch('btnL', 'left'); bindTouch('btnR', 'right'); bindTouch('btnT', 'up');
-// 触屏长按不弹出系统菜单/选择提示
-for (const id of ['cv', 'btnL', 'btnR', 'btnT', 'gear', 'statsBtn'])
-  document.getElementById(id).addEventListener('contextmenu', e => e.preventDefault());
-document.addEventListener('gesturestart', e => e.preventDefault());
-document.addEventListener('selectstart', e => {
-  if (e.target!==buildCopyField && (!debugEnabled || !debugPanel.contains(e.target))) e.preventDefault();
-});
-document.addEventListener('dragstart', e => e.preventDefault());
-document.addEventListener('contextmenu', e => {
-  if (e.target!==buildCopyField && (!debugEnabled || !debugPanel.contains(e.target))) e.preventDefault();
-}, true);
-document.addEventListener('selectionchange', () => {
-  if (document.activeElement===buildCopyField || (debugEnabled && debugPanel.contains(document.activeElement))) return;
-  const s = document.getSelection();
-  if (s && s.rangeCount && !s.isCollapsed) s.removeAllRanges();
-});
+// Prevent native callouts only for canvas and flight controls. Pointer Events
+// still drive the controls; Safari may also send cancelable Touch Events.
+function gameGestureTarget(target) {
+  return target instanceof Element && Boolean(target.closest('#cv,.tbtn'));
+}
+for(const event of ['contextmenu','selectstart','dragstart','gesturestart']){
+  document.addEventListener(event,e=>{
+    if(gameGestureTarget(e.target) && e.cancelable)e.preventDefault();
+  },true);
+}
+for(const event of ['touchstart','touchmove']){
+  document.addEventListener(event,e=>{
+    if(gameGestureTarget(e.target) && e.cancelable)e.preventDefault();
+  },{capture:true,passive:false});
+}
+document.addEventListener('touchcancel',e=>{
+  const targets=Array.from(e.changedTouches??[],t=>t.target);
+  for(const [id,origin] of activePointers){
+    if(gameGestureTarget(origin) && targets.some(t=>t===origin || t.contains(origin) || origin.contains(t)))activePointers.delete(id);
+  }
+  for(const {el,pointers} of touchControls){
+    if(!targets.some(t=>el.contains(t))) continue;
+    for(const id of [...pointers]){
+      activePointers.delete(id);
+      if(el.hasPointerCapture(id))el.releasePointerCapture(id);
+    }
+    pointers.clear();
+    el.classList.remove('active');
+  }
+  if(targets.includes(cvs) && canvasTap){
+    activePointers.delete(canvasTap.id);canvasTap=null;
+  }
+  syncKeys();
+},true);
 
 /* ---------- 主循环（固定步长积分 120Hz） ---------- */
 const FIXED = 1/120;
@@ -3930,9 +3992,9 @@ function frame(now) {
 
 /* ---------- 渲染入口 ---------- */
 const BUILD = Object.freeze({
-  version:'v2.0.15-rc.2c',
-  number:'2.0.15.2c',
-  builtAt:'2026-11-26T08:18:32Z',
+  version:'v2.0.15-rc.2d',
+  number:'2.0.15.2d',
+  builtAt:'2026-11-26T08:56:18Z',
   channel:'候选预览',
 });
 const menuVersion = document.getElementById('menuVersion');
@@ -3955,6 +4017,30 @@ document.getElementById('copyBuild').addEventListener('click', async () => {
     status.textContent = '请使用系统复制';
   }
 });
+const flightIntro=document.getElementById('flightIntro');
+const fuelDecision=document.getElementById('fuelDecision');
+const hasFuelDecision=()=>state==='playing' && !isPaused() && ship.fuel<=0 &&
+  emptyFuelTime+1e-8>=1.5 && !fuelDecisionDismissed;
+document.getElementById('skipFlightIntro').onclick=()=>{introUntil=-Infinity;flightIntro.hidden=true;};
+document.getElementById('replayFlightIntro').onclick=()=>{
+  introAgain=true;
+  document.getElementById('introReplayStatus').textContent='将在下次飞行显示';
+};
+document.getElementById('quickFlight').addEventListener('toggle',e=>{
+  if(!e.currentTarget.open)return;
+  document.getElementById('guideModels').textContent='飞船　'+MODEL_KEYS.map(id=>{
+    const model=SHIP_MODELS[id];
+    return model.label+'（'+model.handling+'）';
+  }).join('；')+'。Super Heavy 专用于塔架捕获。';
+  document.getElementById('guideLimits').textContent='当前普通着陆条件　支脚落在平台内，接近直立。下降不超过'+S.vyMax+
+    '，横移绝对值不超过'+S.vxMax+'，相对着陆面法线倾角约不超过'+Math.round(Math.acos(ALIGN_MIN)*180/Math.PI)+'°。';
+});
+document.getElementById('driftFuelRun').onclick=()=>{
+  if(hasFuelDecision()){fuelDecisionDismissed=true;fuelDecision.hidden=true;}
+};
+document.getElementById('endFuelRun').onclick=()=>{
+  if(hasFuelDecision()){returnToMode();fuelDecision.hidden=true;}
+};
 let shownModeScreen = null;
 function syncModeScreens() {
   const next = modeScreens[state] ?? null;
@@ -3977,6 +4063,20 @@ function render() {
   syncModeScreens();
   // 触控按钮只在可操控的飞行状态出现；地图使用点选，不再混入方向/点火键
   const playing = state === 'playing';
+  fuelDecision.hidden=!hasFuelDecision();
+  if(!fuelDecision.hidden && !fuelAtTop && viewport.classList.contains('fuel-between-controls')){
+    const center=parseFloat(viewport.style.getPropertyValue('--fuel-center'));
+    const bottom=H-safeBottom-12;
+    const overlapsDock=(x,y,halfWidth,above,below)=>{
+      const sx=(x-cam.x)*cam.zoom+W/2,sy=(y-cam.y)*cam.zoom+H*.42;
+      return Math.abs(sx-center)<halfWidth*cam.zoom+82 && sy-above*cam.zoom<bottom && sy+below*cam.zoom>bottom-54;
+    };
+    const target=nearestTarget();
+    fuelAtTop=overlapsDock(ship.x,ship.y,18,24,23) ||
+      Boolean(target && overlapsDock(target.x,target.y,target.w/2,(target.above||0)+4,(target.below||0)+4));
+  }
+  fuelDecision.classList.toggle('bottom-dock',!fuelAtTop && viewport.classList.contains('fuel-between-controls'));
+  flightIntro.hidden=(state!=='levelIntro'&&!playing)||isPaused()||time>=introUntil||!fuelDecision.hidden;
   if (!playing && (keyboard.size || touchControls.some(({pointers}) => pointers.size))) releaseAllKeys();
   document.body.classList.toggle('touch-play', playing && !isPaused());
   document.body.classList.toggle('pause-open', playing);
