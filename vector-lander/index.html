@@ -28,7 +28,7 @@
     touch-action:manipulation;cursor:pointer}
   .iconBtn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;
     stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
-  .tbtn{position:absolute;bottom:calc(12px + var(--safe-b));width:clamp(48px,19%,76px);
+  .tbtn{position:absolute;bottom:calc(12px + var(--safe-b) + var(--flight-lift,0px));width:clamp(48px,19%,76px);
     height:auto;min-height:44px;aspect-ratio:1;display:none;z-index:10;touch-action:none;background:rgba(8,20,38,.72)}
   .tbtn.active{background:#235892}
   body.touch-ui.touch-play .tbtn{display:flex}
@@ -615,6 +615,16 @@ function resize() {
   viewport.classList.toggle('landscape-results', W>H);
   const flightInset=W>H?Math.round((W-safeLeft-safeRight)*.08):12;
   viewport.style.setProperty('--flight-inset',flightInset+'px');
+  const flightHeight=Math.max(0,H-safeTop-safeBottom);
+  const landscape=W>H;
+  const nominalLift=Math.min(landscape?16:20,flightHeight*(landscape?.04:.033));
+  // Wide landscape insets already bring the controls inward toward the target.
+  // Taper the lift on those viewports without moving controls during flight.
+  const sideInsets=safeLeft+safeRight;
+  const sidePressure=landscape?clamp(sideInsets/88,0,1):0;
+  const crowdedLift=clamp((W-sideInsets-460)/600,.08,.42);
+  const flightLift=Math.round(nominalLift*(1-sidePressure*(1-crowdedLift)));
+  viewport.style.setProperty('--flight-lift',flightLift+'px');
   const leftEnd=safeLeft+flightInset+clamp(W*.19,48,76)*2+20;
   const rightStart=W-safeRight-flightInset-clamp(W*.22,54,88);
   viewport.classList.toggle('fuel-between-controls',W>H&&rightStart-leftEnd>=150);
@@ -3993,9 +4003,9 @@ function frame(now) {
 
 /* ---------- 渲染入口 ---------- */
 const BUILD = Object.freeze({
-  version:'v2.0.15-rc.2d',
-  number:'2.0.15.2d',
-  builtAt:'2026-11-26T08:56:18Z',
+  version:'v2.0.15-rc.2e',
+  number:'2.0.15.2e',
+  builtAt:'2026-11-26T09:10:04Z',
   channel:'候选预览',
 });
 const menuVersion = document.getElementById('menuVersion');
