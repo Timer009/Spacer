@@ -1040,7 +1040,7 @@ function loadLevel(i) {
 function spawnShip(introSeconds=0) {
   emptyFuelTime=0;fuelDecisionDismissed=false;fuelAtTop=false;
   predictionDue = -Infinity;
-  ship.visible = true; ship.flame = 0; ship.thrusting = false; landPad = null; trail = [];
+  ship.visible = true; ship.flame = 0; ship.thrusting = false; landPad = null; landOff = 0; trail = [];
   ship.modelId = activeMission?.modelId ?? S.skin;
   ship.spin = 0;
   ship.fuelCapacity = Math.round(levelDef.fuel * currentModel().tank);
@@ -1116,6 +1116,7 @@ function enterMenu(next) {
   if (panelOpen) togglePanel();
   state = next; mapStatsOpen = false;
   activeMission = null; missionResult = null; manualPaused = false;
+  landPad = null; landOff = 0;
   syncOrientationHint();
   setAmbience(null); cancelViewportInput(); banner = null;
 }
@@ -1517,7 +1518,9 @@ function judgeRecovery(contact) {
   const feetFit=feetFitDeck(shipWorldPts(),d);
   const reason = recoveryFailure(contact,approach,feetFit);
   if (reason) { crash(reason,approach); return; }
-  landPad=contact.pad; landOff=approach.along;
+  // Keep the midpoint of the feet at its touchdown position along the deck.
+  landPad=contact.pad;
+  landOff=approach.along-currentModel().landingOffset*Math.sin(ship.a-d.angle);
   rideDeck(d);
   ship.vx=0; ship.vy=0; ship.spin=0; ship.flame=0; ship.thrusting=false;
   setThrustSound(false); lastThrustSnd=false;
@@ -1873,6 +1876,11 @@ function update(dt) {
   }
   if (banner) { banner.life -= dt; if (banner.life <= 0) banner = null; }
 
+  // The result screen leaves the moving deck and its attached rocket live.
+  if (landPad?.marine && (state==='landed' || state==='freeResult')) {
+    rideDeck(deckPose(landPad,time));
+  }
+
   switch (state) {
     case 'title':
       cam.zoom = Math.max(0.4, W / WORLD_W);
@@ -1897,8 +1905,7 @@ function update(dt) {
       break;
     case 'landed':
       if (isTower()) ship.y=missionResult.startY+3*clamp((1.8-stateT-0.2)/0.42,0,1);
-      else if (landPad?.marine) rideDeck(deckPose(landPad,time));
-      else if (landPad && landPad.moving) {           // 骑着浮台/冰筏移动
+      else if (landPad?.moving && !landPad.marine) {           // 骑着浮台/冰筏移动
         ship.x = padCX(landPad, time) + landOff;
         ship.y = padY(landPad, time) - currentModel().landingOffset;
       }
@@ -4003,10 +4010,10 @@ function frame(now) {
 
 /* ---------- 渲染入口 ---------- */
 const BUILD = Object.freeze({
-  version:'v2.0.15',
-  number:'2.0.15.3',
-  builtAt:'2026-11-26T09:21:59Z',
-  channel:'正式发布',
+  version:'v2.0.15-hotfix.1-rc.1',
+  number:'2.0.15.4-rc.1',
+  builtAt:'2026-11-26T12:20:39Z',
+  channel:'热修候选',
 });
 const menuVersion = document.getElementById('menuVersion');
 menuVersion.textContent = BUILD.version;

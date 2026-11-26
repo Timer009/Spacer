@@ -866,6 +866,48 @@ async function seaRecovery(browser,name,host) {
         game.tick(1850); check(state==='freeResult' && save()===initial,'isolated settlement');
         outcomes.push(actual);
       }
+      const attachments=[];
+      for (const [along,age,tilt,early] of [[-48,2.2,0.08,false],[17,6.7,-0.08,true],[48,10.5,0,false]]) {
+        retryMission(); game.tick(1220);
+        check(!landPad,'retry clears attachment');
+        const pad=pads[0];
+        time=pad.epoch+age;
+        const d=deckPose(pad,time), angle=d.angle+tilt;
+        const offset=currentModel().landingOffset;
+        const clearance=Math.max(...currentModel().pts.map(([x,y])=>x*Math.sin(tilt)+y*Math.cos(tilt)))+0.01;
+        game.teleport(d.x+along*d.c+clearance*d.s,d.y+along*d.s-clearance*d.c,
+          d.vx,d.vy+4,angle);
+        const startTime=time;
+        const footAlong=(ship.x-d.x)*d.c+(ship.y-d.y)*d.s-offset*Math.sin(tilt);
+        for(let i=0;i<50 && state==='playing';i++) game.tick(8);
+        check(state==='landed','off-center recovery '+along+' '+JSON.stringify(missionResult));
+        const fuel=ship.fuel,result=missionResult,resultAt=time;
+        const actual=deckApproach(ship,deckPose(pad,time)).along;
+        if(early) {
+          game.tick(600);
+          showMissionEnd();
+        }
+        let minY=Infinity,maxY=-Infinity,minAngle=Infinity,maxAngle=-Infinity;
+        for(let i=0;i<18*120;i++){
+          keys.up=true; keys.left=true;
+          game.tick(8);
+          const pose=deckPose(pad,time), a=deckApproach(ship,pose);
+          check(Math.abs(a.along-actual)<1e-8 && Math.abs(a.altitude)<1e-8 &&
+            Math.abs(a.tilt)<1e-8,'binding '+along+' '+state+' at '+(time-startTime));
+          check(ship.fuel===fuel && !ship.thrusting && !ship.flame &&
+            !ship.vx && !ship.vy && !ship.spin && missionResult===result,'single inert settlement');
+          minY=Math.min(minY,pose.y); maxY=Math.max(maxY,pose.y);
+          minAngle=Math.min(minAngle,pose.angle); maxAngle=Math.max(maxAngle,pose.angle);
+          if(i%120===0) game.draw();
+        }
+        check(Math.abs(actual-footAlong)<0.15,'touchdown position preserved '+along);
+        check(state==='freeResult' && time-resultAt>=17.99 && maxY-minY>13 && maxAngle-minAngle>0.10,'animated result');
+        check(!document.getElementById('freeResultScreen').hidden,'DOM result visible');
+        check(document.getElementById('freeResultInfo').textContent.includes('已在甲板固定'),'success result copy');
+        attachments.push({along:+actual.toFixed(2),touchdownTilt:+result.approach.tilt.toFixed(2),seconds:18,early});
+      }
+      returnToMode(); check(!landPad,'exit clears attachment');
+      check(startMission(RECOVERY_MISSIONS[0]) && !landPad,'new entry clears attachment');
       // Fly from the ordinary spawn using only rotate/thrust inputs and fixed physics steps.
       retryMission(); game.tick(1210);
       const spawnFuel=ship.fuel;
@@ -882,11 +924,32 @@ async function seaRecovery(browser,name,host) {
       check(state==='landed','input-only approach: '+JSON.stringify(missionResult));
       check(ship.fuel<spawnFuel && ship.fuel>0,'powered approach fuel');
       game.tick(1850); check(save()===initial,'full-flight isolation');
-      game.draw(); return {outcomes,fuel:missionResult.fuel,slide:missionResult.approach.slide,
+      game.draw(); return {outcomes,attachments,fuel:missionResult.fuel,slide:missionResult.approach.slide,
         descent:missionResult.approach.descent,tilt:missionResult.approach.tilt};
     });
     assert.equal(results.outcomes.length,6);
     console.log(name+' input-only full recovery',JSON.stringify(results));
+    if(name==='chromium'){
+      const live=await page.evaluate(async()=>{
+        const pad=pads[0],start=performance.now(),startTime=time;
+        const along=deckApproach(ship,deckPose(pad,time)).along;
+        const result=missionResult;
+        let maxError=0,frames=0;
+        __frames.frozen=false;
+        try{
+          do{
+            await new Promise(resolve=>requestAnimationFrame(resolve));
+            const d=deckPose(pad,time),a=deckApproach(ship,d);
+            maxError=Math.max(maxError,Math.abs(a.along-along),Math.abs(a.altitude),Math.abs(a.tilt));
+            if(state!=='freeResult' || missionResult!==result || ship.thrusting) throw Error('live result changed');
+            frames++;
+          }while(performance.now()-start<15000 || time-startTime<15);
+          return {wallSeconds:(performance.now()-start)/1000,sceneSeconds:time-startTime,frames,maxError};
+        }finally{__frames.frozen=true;}
+      });
+      assert.ok(live.maxError<1e-8,JSON.stringify(live));
+      console.log(name+' real-time deck settlement '+JSON.stringify(live));
+    }
     await page.waitForFunction(()=>settlementReady());
     await page.locator('#freeResultScreen').getByRole('button',{name:'再飞一次'}).click();
     await page.evaluate(() => { game.tick(1250); game.draw(); });
@@ -947,6 +1010,11 @@ async function towerCatch(browser,name,host) {
     const results=await page.evaluate(()=>{
       game.tick(1900);game.draw();
       if(state!=='freeResult') throw Error('missing result');
+      const towerPose=[ship.x,ship.y,ship.a,ship.fuel].join(),result=missionResult;
+      const t=time;
+      game.tick(18000);game.draw();
+      if(time-t<17.99 || towerPose!==[ship.x,ship.y,ship.a,ship.fuel].join() || result!==missionResult)
+        throw Error('tower pose changed during result hold');
       const cases=[[-55,-18,0,5,0,'撞上塔架'],[30,-18,0,5,0,'撞上机械臂'],
         [82,18,0,5,0,'错过捕获窗口'],[0,13.99,8,4,0,'捕获相对速度过快'],
         [0,13.99,0,16,0,'捕获相对速度过快'],[0,13.99,0,4,0.17,'捕获倾角过大']];
@@ -1173,6 +1241,11 @@ async function performanceSample(browser,name,host) {
       const browser = await engine.launch({headless:true,...options});
       try {
         console.log(name+' '+browser.version());
+        if(process.env.SPACER_RECOVERY_ONLY){
+          await seaRecovery(browser,name,host);
+          await towerCatch(browser,name,host);
+          continue;
+        }
         if(process.env.SPACER_CORE_ONLY){
           await coreAdjudication(browser,name,host);
           await regression(browser,name,host);
